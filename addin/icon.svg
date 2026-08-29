@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Original "MCP" mark in the KNX colour palette (not the KNX logo). -->
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="#ffffff"/>
+  <text x="128" y="162" text-anchor="middle"
+        font-family="'DejaVu Sans','Arial','Helvetica',sans-serif"
+        font-weight="700" font-size="92" letter-spacing="2">
+    <tspan fill="#006bb6">M</tspan><tspan fill="#0cb14b">C</tspan><tspan fill="#8e979d">P</tspan>
+  </text>
+</svg>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Project-level ETS6 AddIn (NOT a DCA). Single instance per ETS session.
+     AppId is a STATIC development placeholder (randomly chosen, format-conforming).
+     No self-chosen manufacturer ID is guaranteed free of collision with a real KNX
+     manufacturer - replace with a KNX Association-registered ID before distribution. -->
+<Knxapp AppId="M0FFF-A0001" Icon="icon.png" AddInAssembly="Knx.EtsBridge.Addin.dll">
+  <Configuration IsSingleInstanceAddIn="true"
+                 AddToMainToolbar="true"
+                 HasConfigurationDialog="true"
+                 Is64BitCompatible="true"
+                 SubscribeToProjectClosingEvent="true"
+                 SubscribeToProjectOpenedEvent="true" />
+  <DisplayNames>
+    <DisplayName LanguageId="en-US" Name="KNX-ETS MCP Bridge" />
+    <DisplayName LanguageId="de-DE" Name="KNX-ETS MCP Bridge" />
+  </DisplayNames>
+</Knxapp>

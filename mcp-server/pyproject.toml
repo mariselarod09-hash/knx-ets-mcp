@@ -1,0 +1,31 @@
+[project]
+name = "knx-ets-mcp"
+version = "0.2.0"
+description = "MCP server bridging LLM tool calls to the KNX ETS6 AddIn via IPC"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=3,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+exe = [
+    "pyinstaller>=6",
+]
+
+[project.scripts]
+knx-ets-mcp = "knx_ets_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/knx_ets_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

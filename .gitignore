@@ -1,0 +1,29 @@
+
+.references
+
+# macOS
+.DS_Store
+
+# .NET build output
+[Bb]in/
+[Oo]bj/
+*.user
+
+# Node / Python
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+dist/
+build/
+
+# Generated release artifacts (zips + wheels)
+release/
+
+
+# Claude Code local session state
+.claude/
+
+# Local scratch notes (may contain secrets)
+git.txt

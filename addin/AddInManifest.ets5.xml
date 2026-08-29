@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Project-level ETS5 AddIn (NOT a DCA). ETS5 <Knxapp> manifest format.
+     Differences vs the ETS6 manifest:
+       - AddToContentSwitcher attribute (ETS5).
+       - No SubscribeToProject*Event attributes: ETS5 always calls
+         OnProjectOpened / OnProjectClosing on IEts4AddIn.
+       - HasConfigurationDialog=false: the ETS5 build has no IEditAddInConfiguration
+         dialog; configure via the persisted UserConfiguration / defaults (ETS5-SPIKE).
+     AppId is the same static development placeholder as the ETS6 build; replace with a
+     KNX Association-registered ID before any distribution. -->
+<Knxapp AppId="M0FFF-A0001" Icon="icon.png" AddInAssembly="Knx.EtsBridge.Addin.dll">
+  <Configuration IsSingleInstanceAddIn="true"
+                 AddToMainToolbar="true"
+                 AddToContentSwitcher="false"
+                 HasConfigurationDialog="false"
+                 Is64BitCompatible="true" />
+  <DisplayNames>
+    <DisplayName LanguageId="en-US" Name="KNX-ETS MCP Bridge" />
+    <DisplayName LanguageId="de-DE" Name="KNX-ETS MCP Bridge" />
+  </DisplayNames>
+  <AddInToolbarButtons />
+</Knxapp>

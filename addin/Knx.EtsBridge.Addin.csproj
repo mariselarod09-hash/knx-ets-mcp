@@ -1,0 +1,110 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>Knx.EtsBridge.Addin</AssemblyName>
+    <RootNamespace>Knx.EtsBridge.Addin</RootNamespace>
+    <Version>0.2.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);CS0618;NU1701;NU1702</NoWarn>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <!-- true: Newtonsoft.Json.dll must land in output for sideload.
+         ETS (net48) does NOT ship Newtonsoft.Json. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- WPF DLLs referenced directly below; UseWPF=true requires Windows SDK. -->
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+  </PropertyGroup>
+
+  <!-- .NET Framework 4.8 reference assemblies (enables cross-compile on macOS/Linux). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Newtonsoft.Json is compile-only and EMBEDDED as a resource (see below), NOT
+         shipped as a loose DLL. ETS loads the AddIn in a way that does not probe our
+         folder for dependencies (LoadFile / shadow-copy), so a loose Newtonsoft.Json.dll
+         is "could not load file or assembly". Embedding + resolving it from the manifest
+         resource in the AssemblyResolve handler is load-context-agnostic and bulletproof
+         (single self-contained AddIn DLL). GeneratePathProperty exposes $(PkgNewtonsoft_Json). -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" GeneratePathProperty="true">
+      <IncludeAssets>compile</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Compile-only: the ETS SDK types implement IAsyncDisposable (defined in this
+         assembly). ETS provides it at runtime; we must NOT ship it (it would bring back
+         the same binding-redirect chain we eliminated by removing System.Text.Json). -->
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.0">
+      <IncludeAssets>compile</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Embed the net45 Newtonsoft.Json.dll into our assembly; the AssemblyResolve handler
+       loads it from this manifest resource. LogicalName is matched in ResolveFromAddInFolder. -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(PkgNewtonsoft_Json)\lib\net45\Newtonsoft.Json.dll">
+      <LogicalName>Newtonsoft.Json.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- ETS SDK DLL location: Windows install vs. local reference copy for macOS builds.
+       Default is the ETS6 6.4 SDK (Build 8658). A 6.4-built AddIn runs on BOTH ETS 6.3
+       and 6.4: it targets the common API surface and the AssemblyResolve handler binds
+       the Knx.Ets.* references to whatever SDK version the host ETS has loaded. -->
+  <PropertyGroup>
+    <EtsDllPath Condition="'$(OS)' == 'Windows_NT'">C:\Program Files (x86)\ETS6\</EtsDllPath>
+    <EtsDllPath Condition="'$(OS)' != 'Windows_NT'">../.references/6.4.0 - Build 8658/_extract/nupkg/lib/net48/</EtsDllPath>
+  </PropertyGroup>
+
+  <!-- ETS5 target: build against the ETS5 SDK 5.7 DLLs and define the ETS5 constant.
+       Enable with:  dotnet build -c Release -p:Ets5=true
+       Overrides EtsDllPath (must come after the OS block so it wins). -->
+  <PropertyGroup Condition="'$(Ets5)' == 'true'">
+    <DefineConstants>$(DefineConstants);ETS5</DefineConstants>
+    <EtsDllPath>../.references/ets5_extract/</EtsDllPath>
+    <AssemblyName>Knx.EtsBridge.Addin</AssemblyName>
+  </PropertyGroup>
+
+  <!-- ETS provides these DLLs at runtime; Private=false prevents copying them to output. -->
+  <ItemGroup>
+    <Reference Include="Knx.Ets.Sdk">
+      <HintPath>$(EtsDllPath)Knx.Ets.Sdk.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Knx.Ets.Common.Types">
+      <HintPath>$(EtsDllPath)Knx.Ets.Common.Types.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Knx.Ets.Sdk.AddIns.AddInViews">
+      <HintPath>$(EtsDllPath)Knx.Ets.Sdk.AddIns.AddInViews.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Knx.Ets.Common.Resources">
+      <HintPath>$(EtsDllPath)Knx.Ets.Common.Resources.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.AddIn" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+  </ItemGroup>
+
+  <!-- ETS5: the config dialog implements ETS6-only IModalDialog and is unused on ETS5
+       (ShowConfigurationDialog returns false there). Exclude it from the ETS5 compile. -->
+  <ItemGroup Condition="'$(Ets5)' == 'true'">
+    <Compile Remove="Host/ConfigurationDialog.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="AddInManifest.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
