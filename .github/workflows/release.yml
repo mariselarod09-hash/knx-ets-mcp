@@ -6,6 +6,12 @@ name: release
 # The AddIn build needs the SDK_REPO_TOKEN secret (read access to the private
 # knx-ai/knx-ets-sdk repo; see addin.yml). Without it the AddIn is skipped and the
 # combined zip contains only the MCP server.
+#
+# The AddIn payload folders are signed with the ETS directory signature
+# (.sign/sign.py); the signing key is the fixed ETS "converter" RSA key,
+# provided via the ETS_CONVERTER_KEY repo secret (the <RSAKeyValue> XML). Without
+# it the payload is built UNSIGNED (ETS still runs it, but the folder is not
+# treated as signed).
 
 on:
   push:
@@ -142,10 +148,11 @@ jobs:
     needs: [build-mcp, build-addin, build-exe]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
-      - name: Assemble one combined release zip (AddIn + MCP server exe + wheel)
+      - name: Assemble combined release payload pkg/ (AddIn + MCP server exe + wheel)
         shell: bash
         run: |
           tag="${GITHUB_REF_NAME}"
@@ -168,6 +175,44 @@ jobs:
           [ -n "$exe" ] && cp "$exe" "pkg/Start-MCP-Server.exe"
           # Python wheel (pip alternative) kept in a subfolder to keep the root clean.
           if [ -n "$whl" ]; then mkdir -p pkg/mcp-server-python; cp "$whl" pkg/mcp-server-python/; fi
+      - name: Sign AddIn payload folders (ETS directory signature)
+        # Signs the FINAL payload copy in pkg/ immediately before it is zipped, so the
+        # signed bytes are exactly the shipped bytes. Each <AppId> folder gets an
+        # <AppId>.signature next to it (in ets6/ and ets5/); the zip step below runs
+        # after this so the .signature files are inside the archive. Best-effort:
+        # without the ETS_CONVERTER_KEY secret the payload ships unsigned (ETS still
+        # runs it, but flags the folder as not signed).
+        shell: bash
+        env:
+          ETS_CONVERTER_KEY: ${{ secrets.ETS_CONVERTER_KEY }}
+        run: |
+          if [ ! -d pkg/ets6 ] && [ ! -d pkg/ets5 ]; then
+            echo "No AddIn payload to sign."
+            exit 0
+          fi
+          if [ -z "$ETS_CONVERTER_KEY" ]; then
+            echo "::warning::ETS_CONVERTER_KEY secret not set - AddIn payload folders will be UNSIGNED."
+            exit 0
+          fi
+          python3 -m venv .sign/venv
+          .sign/venv/bin/pip install -q pyuca
+          signed=0
+          # AppId folder names are fixed-format (no spaces/newlines), so a plain
+          # newline-separated find is safe here.
+          while IFS= read -r manifest; do
+            app="$(dirname "$manifest")"
+            echo "=== signing $app ==="
+            .sign/venv/bin/python .sign/sign.py "$app"
+            .sign/venv/bin/python .sign/sign.py "$app" --check
+            signed=$((signed + 1))
+          done < <(find pkg/ets6 pkg/ets5 -maxdepth 2 -type f -name AddInManifest.xml 2>/dev/null)
+          echo "=== signature files in pkg/ ($signed folders signed) ==="
+          find pkg -name '*.signature'
+      - name: Zip signed payload + MCP server into one release archive
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          # Zip AFTER signing so the .signature files are inside the archive.
           (cd pkg && zip -r "../knx-ets-mcp-$tag.zip" .)
           echo "=== combined zip contents ==="; unzip -l "knx-ets-mcp-$tag.zip"
       - name: Publish release

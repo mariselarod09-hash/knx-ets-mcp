@@ -141,7 +141,8 @@ async def test_catalog_search_by_order_number(client: Client) -> None:
 # -- knx_list_parameters -------------------------------------------------------
 
 async def test_list_parameters(client: Client) -> None:
-    result = await client.call_tool("knx_list_parameters", {"device_ref": "dev-0001"}, raise_on_error=False)
+    # active_only defaults to True, so pass False here to also see the inactive param-0003.
+    result = await client.call_tool("knx_list_parameters", {"device_ref": "dev-0001", "active_only": False}, raise_on_error=False)
     params = tool_data(result)
     assert len(params) == 2
     refs = {p["parameterRef"] for p in params}
@@ -153,10 +154,22 @@ async def test_list_parameters(client: Client) -> None:
     assert p1["value"] == "normal"
     assert p1["isDefault"] is True
     assert p1["isActive"] is True
+    # Enum semantics: label + allowed choices so the LLM picks a valid value.
+    assert p1["text"] == "Operating Mode"
+    assert p1["access"] == "ReadWrite"
+    assert {o["value"] for o in p1["options"]} == {"normal", "night", "comfort"}
+    assert any(o["text"] == "Comfort" for o in p1["options"])
+    # Not a numeric parameter -> no min/max.
+    assert "min" not in p1 and "max" not in p1
 
-    # param-0003: isActive False
+    # param-0003: isActive False (deactivated by a controlling parameter), numeric range.
     p3 = next(p for p in params if p["parameterRef"] == "param-0003")
     assert p3["isActive"] is False
+    assert p3["text"] == "Switch-on delay"
+    assert p3["unit"] == "s"
+    assert p3["min"] == "0" and p3["max"] == "255"
+    # Numeric parameter -> no enum options.
+    assert "options" not in p3
 
 
 async def test_list_parameters_non_default(client: Client) -> None:
@@ -174,3 +187,134 @@ async def test_list_parameters_unknown_device(client: Client) -> None:
     result = await client.call_tool("knx_list_parameters", {"device_ref": "dev-nonexistent"}, raise_on_error=False)
     assert result.is_error
     assert "not_found" in error_text(result)
+
+
+async def test_list_parameters_block_path(client: Client) -> None:
+    """Parameters carry their UI block path to disambiguate repeated names."""
+    result = await client.call_tool(
+        "knx_list_parameters",
+        {"device_ref": "dev-0001", "active_only": False},
+        raise_on_error=False,
+    )
+    params = tool_data(result)
+    p3 = next(p for p in params if p["parameterRef"] == "param-0003")
+    assert "PB9/10" in p3["block"]
+    # Targeting workflow: block + name yields exactly one instance.
+    hits = [p for p in params
+            if "PB9/10" in (p.get("block") or "") and p["name"] == "Switch-on delay"]
+    assert len(hits) == 1 and hits[0]["parameterRef"] == "param-0003"
+
+
+async def test_list_parameters_active_only_default(client: Client) -> None:
+    """active_only defaults to True -> the inactive param-0003 is dropped by default."""
+    result = await client.call_tool("knx_list_parameters", {"device_ref": "dev-0001"}, raise_on_error=False)
+    params = tool_data(result)
+    refs = {p["parameterRef"] for p in params}
+    assert "param-0001" in refs        # active
+    assert "param-0003" not in refs    # inactive -> filtered by default
+    assert all(p["isActive"] for p in params)
+
+
+async def test_list_devices_name_contains_matches_description(client: Client) -> None:
+    """Finding a device by its human label in `description` (name is the product name)."""
+    result = await client.call_tool("knx_list_devices", {"name_contains": "couch"}, raise_on_error=False)
+    devs = tool_data(result)
+    assert any(d["ref"] == "dev-0001" for d in devs)          # matched via description "Couch"
+    assert all("couch" not in (d.get("name") or "").lower() for d in devs)  # not via name
+
+
+async def test_list_group_addresses_name_contains_matches_description(client: Client) -> None:
+    """Finding a GA by a label in `description` (name is a scheme like 'Light Living Room')."""
+    result = await client.call_tool("knx_list_group_addresses", {"name_contains": "mittelgang"}, raise_on_error=False)
+    gas = tool_data(result)
+    assert any(g["ref"] == "ga-0001" for g in gas)            # matched via description "Mittelgang"
+
+
+async def test_list_parameters_active_only(client: Client) -> None:
+    """active_only drops inactive parameters (param-0003 is inactive)."""
+    result = await client.call_tool(
+        "knx_list_parameters",
+        {"device_ref": "dev-0001", "active_only": True},
+        raise_on_error=False,
+    )
+    params = tool_data(result)
+    refs = {p["parameterRef"] for p in params}
+    assert "param-0001" in refs      # active
+    assert "param-0003" not in refs  # inactive -> filtered out
+    assert all(p["isActive"] for p in params)
+
+
+async def test_list_parameters_name_contains(client: Client) -> None:
+    """name_contains filters case-insensitively on name/label.
+
+    param-0003 ("Switch-on delay") is inactive, so active_only=False is needed to reach it.
+    """
+    result = await client.call_tool(
+        "knx_list_parameters",
+        {"device_ref": "dev-0001", "name_contains": "delay", "active_only": False},
+        raise_on_error=False,
+    )
+    params = tool_data(result)
+    assert len(params) == 1
+    assert params[0]["parameterRef"] == "param-0003"  # "Switch-on delay"
+
+
+async def test_list_comobjects_name_contains(client: Client) -> None:
+    """name_contains scopes a large ComObject list to matching entries."""
+    full = tool_data(await client.call_tool(
+        "knx_list_comobjects", {"device_ref": "dev-0002"}, raise_on_error=False))
+    filtered = tool_data(await client.call_tool(
+        "knx_list_comobjects",
+        {"device_ref": "dev-0002", "name_contains": "dim object b"},
+        raise_on_error=False,
+    ))
+    assert len(filtered) < len(full)
+    assert all("dim object b" in (c.get("name") or "").lower() for c in filtered)
+
+
+async def test_list_comobjects_channel_grouping(client: Client) -> None:
+    """ComObjects carry a channel label; dev-0001 objects are channel-independent."""
+    cos2 = tool_data(await client.call_tool(
+        "knx_list_comobjects", {"device_ref": "dev-0002"}, raise_on_error=False))
+    by_ref = {c["ref"]: c for c in cos2}
+    assert by_ref["co-0004"]["channel"] == "Channel A - Dimming"
+    assert by_ref["co-0005"]["channel"] == "Channel B - Dimming"
+
+    # dev-0001 objects have no channel (channel-independent) -> field omitted.
+    cos1 = tool_data(await client.call_tool(
+        "knx_list_comobjects", {"device_ref": "dev-0001"}, raise_on_error=False))
+    assert all("channel" not in c for c in cos1)
+
+
+async def test_list_comobjects_block_path(client: Client) -> None:
+    """ComObjects carry the authoritative ETS block path (`block`)."""
+    cos = tool_data(await client.call_tool(
+        "knx_list_comobjects", {"device_ref": "dev-0002"}, raise_on_error=False))
+    by_ref = {c["ref"]: c for c in cos}
+    assert by_ref["co-0004"]["block"] == "Operation / Display > Dimming > Channel A"
+
+
+async def test_application_dynamic(client: Client) -> None:
+    """application.dynamic returns the dynamic UI tree XML."""
+    result = await client.call_tool(
+        "knx_application_dynamic", {"device_ref": "dev-0002"}, raise_on_error=False)
+    data = tool_data(result)
+    assert "xml" in data
+    assert "ParameterBlock" in data["xml"] and "ParameterRefRef" in data["xml"]
+
+
+async def test_application_dynamic_unknown_device(client: Client) -> None:
+    result = await client.call_tool(
+        "knx_application_dynamic", {"device_ref": "dev-nope"}, raise_on_error=False)
+    assert result.is_error
+    assert "not_found" in error_text(result)
+
+
+async def test_list_comobjects_filter_by_channel(client: Client) -> None:
+    """name_contains matches the channel label, scoping to one function."""
+    result = tool_data(await client.call_tool(
+        "knx_list_comobjects",
+        {"device_ref": "dev-0002", "name_contains": "channel a"},
+        raise_on_error=False,
+    ))
+    assert {c["ref"] for c in result} == {"co-0004"}

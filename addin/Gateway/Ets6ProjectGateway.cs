@@ -319,7 +319,13 @@ namespace Knx.EtsBridge.Addin
                 if (!uint.TryParse(parts[1].Substring(1), out var coNumber))
                     throw new ArgumentException($"Invalid comobject number in ref: {coRef}");
 
-                var co = device.ComObjectInstanceRefs.Cast<ComObjectInstanceRef>()
+                // Prefer ActiveComObjectInstanceRefs: after a parameter change the SDK
+                // may return the activated object only in the active collection, while
+                // the full collection's instance still has IsActive=false. Using the
+                // active collection first aligns FindComObject with ListComObjects.
+                var co = device.ActiveComObjectInstanceRefs.Cast<ComObjectInstanceRef>()
+                             .FirstOrDefault(c => c.Number == coNumber)
+                      ?? device.ComObjectInstanceRefs.Cast<ComObjectInstanceRef>()
                              .FirstOrDefault(c => c.Number == coNumber);
                 if (co == null)
                     throw new KeyNotFoundException($"ComObject {coRef} not found.");
@@ -346,7 +352,10 @@ namespace Knx.EtsBridge.Addin
                 if (module == null)
                     throw new KeyNotFoundException($"ModuleInstance m{modulePuid} not found on device.");
 
-                var co = module.ComObjectInstanceRefs.Cast<ComObjectInstanceRef>()
+                // Prefer active collection for module-level COs as well.
+                var co = module.ActiveComObjectInstanceRefs.Cast<ComObjectInstanceRef>()
+                             .FirstOrDefault(c => c.Number == coNumber)
+                      ?? module.ComObjectInstanceRefs.Cast<ComObjectInstanceRef>()
                              .FirstOrDefault(c => c.Number == coNumber);
                 if (co == null)
                     throw new KeyNotFoundException($"ComObject {coRef} not found.");
@@ -773,6 +782,10 @@ namespace Knx.EtsBridge.Addin
             var result = new List<ComObjectInfo>();
             var devicePuid = device.Puid;
 
+            // Map each ComObject to its channel/function label so a flat list can be grouped.
+            // Built defensively: any channel-traversal quirk just leaves objects ungrouped.
+            var channelByCoRef = BuildChannelByCoRef(device, devicePuid);
+
             void AddCos(IEnumerable<ComObjectInstanceRef> cos)
             {
                 foreach (var co in cos)
@@ -784,12 +797,17 @@ namespace Knx.EtsBridge.Addin
                             links.Add(BuildGaRef(conn.GroupAddress));
                     }
 
+                    var coRef = BuildCoRef(devicePuid, co);
+                    channelByCoRef.TryGetValue(coRef, out var channelLabel);
+
                     result.Add(new ComObjectInfo
                     {
                         // #7: Use BuildCoRef for unique refs across modules.
-                        Ref = BuildCoRef(devicePuid, co),
+                        Ref = coRef,
                         Number = co.Number,
                         Name = co.Name ?? "",
+                        Channel = string.IsNullOrEmpty(channelLabel) ? null : channelLabel,
+                        Block = BuildBlockPath(co),
                         // Verified: P:Knx.Ets.Sdk.Project.ComObjectInstanceRef.Description (get/set, SDK XML line 11788)
                         Description = co.Description,
                         // Verified: P:Knx.Ets.Sdk.Project.ComObjectInstanceRef.FunctionText (get/set, SDK XML line 11802)
@@ -810,6 +828,81 @@ namespace Knx.EtsBridge.Addin
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Builds a map coRef -> channel label by walking the device's ChannelInstances
+        /// (and each module's ChannelInstances) and their ActiveComObjectInstances. The
+        /// label prefers the (user-editable) Name, then the display Text, then the
+        /// application-program channel id. Fully defensive: any traversal quirk leaves the
+        /// affected objects ungrouped rather than failing the ComObject listing.
+        /// </summary>
+        private static Dictionary<string, string> BuildChannelByCoRef(Device device, long devicePuid)
+        {
+            var map = new Dictionary<string, string>();
+
+            void Index(System.Collections.IEnumerable channels)
+            {
+                if (channels == null) return;
+                foreach (ChannelInstance ch in channels)
+                {
+                    string label;
+                    try
+                    {
+                        label = !string.IsNullOrEmpty(ch.Name) ? ch.Name
+                              : !string.IsNullOrEmpty(ch.Text) ? ch.Text
+                              : (ch.ApplicationProgramChannelId ?? "");
+                    }
+                    catch { label = ""; }
+                    if (string.IsNullOrEmpty(label)) continue;
+
+                    try
+                    {
+                        foreach (ComObjectInstanceRef co in ch.ActiveComObjectInstances)
+                            map[BuildCoRef(devicePuid, co)] = label;
+                    }
+                    catch { /* skip this channel's objects */ }
+                }
+            }
+
+            try { Index(device.ChannelInstances); } catch { }
+            try
+            {
+                foreach (ModuleInstance mod in device.ModuleInstances)
+                {
+                    try { Index(mod.ChannelInstances); } catch { }
+                }
+            }
+            catch { }
+
+            return map;
+        }
+
+        /// <summary>
+        /// Walks the group-object tree from a ComObject up to the root, collecting the
+        /// Folder texts, to yield the authoritative ETS UI block path (e.g.
+        /// "Operation / Display > Push button functions > PB9/10: Push buttons 9/10").
+        /// Defensive: any traversal quirk yields null rather than failing the listing.
+        /// </summary>
+        private static string? BuildBlockPath(ComObjectInstanceRef co)
+        {
+            try
+            {
+                var parts = new List<string>();
+                IGroupObjectTreeElement? cur = co.ParentTreeElement;
+                int guard = 0;
+                while (cur != null && guard++ < 32)
+                {
+                    if (cur is Folder f)
+                    {
+                        var txt = f.Text;
+                        if (!string.IsNullOrEmpty(txt)) parts.Insert(0, txt.Trim());
+                    }
+                    cur = cur.ParentTreeElement;
+                }
+                return parts.Count > 0 ? string.Join(" > ", parts) : null;
+            }
+            catch { return null; }
         }
 
         public List<TopologyAreaInfo> ListTopology()
@@ -1049,11 +1142,19 @@ namespace Knx.EtsBridge.Addin
             var device = FindDevice(deviceRef);
             var result = new List<ParameterInfo>();
 
+            // Build the RefId -> UI block-path map once (from the app-program dynamic tree,
+            // cached per application program). This is what makes a parameter's UI block
+            // ("... > PB9/10: Push buttons 9/10") known, so identically-named parameters can
+            // be told apart. Defensive: on any failure the map is empty and Block stays null.
+            var ap = device.ParameterInstanceRefs.Cast<ParameterInstanceRef>()
+                         .FirstOrDefault()?.ParameterRef?.Parent;
+            var blockMap = ap != null ? GetParamBlockMap(ap) : new Dictionary<string, string>();
+
             void AddParams(IEnumerable<ParameterInstanceRef> parms)
             {
                 foreach (var p in parms)
                 {
-                    result.Add(new ParameterInfo
+                    var info = new ParameterInfo
                     {
                         // #6: Prefix with "p:" so it round-trips into param.set/FindParameter.
                         ParameterRef = $"p:{p.UniqueId ?? ""}",
@@ -1061,7 +1162,17 @@ namespace Knx.EtsBridge.Addin
                         Value = p.Value?.ToString() ?? "",
                         IsDefault = p.IsDefault,
                         IsActive = p.IsActive
-                    });
+                    };
+                    // Enrich with product-data semantics (label, unit, access, options,
+                    // min/max) so the LLM can reason about a parameter instead of guessing.
+                    // Fully defensive: any SDK quirk on a single field must not drop the
+                    // whole parameter (some products/versions leave these unset).
+                    EnrichParameter(info, p);
+                    // Authoritative UI block path (disambiguates repeated parameter names).
+                    var refId = ExtractRefId(p.UniqueId);
+                    if (refId != null && blockMap.TryGetValue(refId, out var bp) && !string.IsNullOrEmpty(bp))
+                        info.Block = bp;
+                    result.Add(info);
                 }
             }
 
@@ -1072,6 +1183,144 @@ namespace Knx.EtsBridge.Addin
             }
 
             return result;
+        }
+
+        // Cache of RefId -> UI-block-path per application program (keyed by fingerprint).
+        // The dynamic XML can be ~18 MB; parsing it once per app and reusing keeps
+        // params.list responsive.
+        private static readonly Dictionary<string, Dictionary<string, string>> _blockMapCache
+            = new Dictionary<string, Dictionary<string, string>>();
+
+        /// <summary>
+        /// Returns RefId -> UI block path (e.g. "Operation / Display > Push button functions
+        /// > PB9/10: Push buttons 9/10") by parsing the application program's dynamic tree.
+        /// Cached per app program. Read-only, fully defensive (empty map on any failure).
+        /// </summary>
+        private Dictionary<string, string> GetParamBlockMap(ApplicationProgram ap)
+        {
+            string key;
+            try { key = ap.Fingerprint ?? ap.Hash ?? ("app-" + ap.ApplicationNumber); }
+            catch { key = "app"; }
+
+            lock (_blockMapCache)
+                if (_blockMapCache.TryGetValue(key, out var cached)) return cached;
+
+            var map = new Dictionary<string, string>();
+            try
+            {
+                object? dyn = ap.Dynamic;
+                var root = dyn as System.Xml.XmlNode;
+                if (root is System.Xml.XmlDocument doc) root = doc.DocumentElement;
+                if (root != null) WalkDynamic(root, new List<string>(), map);
+            }
+            catch { /* leave map empty */ }
+
+            lock (_blockMapCache) _blockMapCache[key] = map;
+            return map;
+        }
+
+        /// <summary>Recursively walks the dynamic tree, mapping each ParameterRefRef@RefId to
+        /// the path of enclosing ParameterBlock/Channel labels. choose/when/ParameterSeparator
+        /// are transparent (they do not add a UI-tree level).</summary>
+        private static void WalkDynamic(System.Xml.XmlNode node, List<string> stack,
+                                        Dictionary<string, string> map)
+        {
+            foreach (System.Xml.XmlNode child in node.ChildNodes)
+            {
+                if (child.NodeType != System.Xml.XmlNodeType.Element) continue;
+                var name = child.LocalName;
+                if (name == "ParameterRefRef")
+                {
+                    var refId = child.Attributes?["RefId"]?.Value;
+                    if (!string.IsNullOrEmpty(refId) && !map.ContainsKey(refId))
+                        map[refId] = string.Join(" > ", stack);
+                }
+                else if (name == "ParameterBlock" || name == "Channel")
+                {
+                    var label = CleanBlockLabel(child.Attributes?["Text"]?.Value)
+                                ?? child.Attributes?["Name"]?.Value;
+                    bool pushed = !string.IsNullOrEmpty(label);
+                    if (pushed) stack.Add(label!);
+                    WalkDynamic(child, stack, map);
+                    if (pushed) stack.RemoveAt(stack.Count - 1);
+                }
+                else
+                {
+                    WalkDynamic(child, stack, map);
+                }
+            }
+        }
+
+        /// <summary>Cleans a block label: strips the "{{n:...}}" text-parameter placeholders
+        /// and trims (e.g. "    PB9/10: {{0:Push buttons 9/10}}" -> "PB9/10: Push buttons 9/10").</summary>
+        private static string? CleanBlockLabel(string? t)
+        {
+            if (string.IsNullOrEmpty(t)) return null;
+            t = System.Text.RegularExpressions.Regex.Replace(t, @"\{\{\d+:", "");
+            t = t.Replace("}}", "").Trim();
+            return string.IsNullOrEmpty(t) ? null : t;
+        }
+
+        /// <summary>Extracts the dynamic-tree RefId (e.g. "M-0083_A-008A-25-83B3_P-365_R-923")
+        /// from a parameter UniqueId (e.g. "P-02D7-0_DI-90_M-0083_A-008A-25-83B3_P-365_R-923").</summary>
+        private static string? ExtractRefId(string? uniqueId)
+        {
+            if (string.IsNullOrEmpty(uniqueId)) return null;
+            var i = uniqueId.IndexOf("_M-", System.StringComparison.Ordinal);
+            return i >= 0 ? uniqueId.Substring(i + 1) : null;
+        }
+
+        /// <summary>
+        /// Adds product-data semantics to a ParameterInfo: label (Text), unit (SuffixText),
+        /// access level, enum options (value+label) or numeric min/max. This is what lets an
+        /// LLM reason about a parameter ("Nachlaufzeit", choices "10s/30s/1min", 0..255)
+        /// rather than seeing a bare value. Best-effort: every field is guarded so an SDK
+        /// quirk (e.g. an empty DatapointType, a version without a given property, or a
+        /// product that leaves a field unset) degrades to omitting that field, never to
+        /// dropping the parameter. The condition/controlling-parameter graph is not exposed
+        /// by the SDK; callers rely on IsActive (post-visibility) plus re-reading after a set.
+        /// </summary>
+        private static void EnrichParameter(ParameterInfo info, ParameterInstanceRef p)
+        {
+            try
+            {
+                var pref = p.ParameterRef;
+                if (pref == null) return;
+
+                try { var t = pref.Text; if (!string.IsNullOrEmpty(t)) info.Text = t; } catch { }
+                try { var s = pref.SuffixText; if (!string.IsNullOrEmpty(s)) info.Unit = s; } catch { }
+                try { var a = pref.Access.ToString(); if (!string.IsNullOrEmpty(a)) info.Access = a; } catch { }
+
+                var pt = pref.Parameter?.ParameterType;
+                if (pt == null) return;
+
+                if (pt is ParameterTypeRestriction restr)
+                {
+                    try
+                    {
+                        var opts = new List<ParameterOption>();
+                        foreach (TypeRestrictionEnumeration e in restr.Enumerations)
+                        {
+                            opts.Add(new ParameterOption
+                            {
+                                Value = e.Value.ToString(),
+                                Text = e.Text ?? ""
+                            });
+                        }
+                        if (opts.Count > 0) info.Options = opts;
+                    }
+                    catch { }
+                }
+                else if (pt is ParameterTypeNumber num)
+                {
+                    try { info.Min = num.MinInclusive.ToString(); info.Max = num.MaxInclusive.ToString(); } catch { }
+                }
+                else if (pt is ParameterTypeFloat fl)
+                {
+                    try { info.Min = fl.MinInclusive.ToString(); info.Max = fl.MaxInclusive.ToString(); } catch { }
+                }
+            }
+            catch { /* semantics are best-effort; never fail the listing */ }
         }
 
         // ---------------------------------------------------------------
@@ -1235,7 +1484,7 @@ namespace Knx.EtsBridge.Addin
               + "Expected 'main/middle/sub' (3-level), 'main/sub' (2-level), or a raw integer.");
         }
 
-        public void CreateLink(string comObjectRef, string gaRef)
+        public LinkResult CreateLink(string comObjectRef, string gaRef)
         {
             var (_, co) = FindComObject(comObjectRef);
             if (!co.IsActive)
@@ -1244,6 +1493,107 @@ namespace Knx.EtsBridge.Addin
             var ga = FindGroupAddress(gaRef);
 
             RunInMarker("Bridge: Link ComObject", () => co.Link(ga));
+
+            // The link always proceeds; attach a soft DPT-compatibility advisory so a wrong
+            // wiring (e.g. a % object linked to a switch GA) is caught. Fully defensive:
+            // DPT inspection must never fail an otherwise-successful link.
+            var result = new LinkResult { ComObjectRef = comObjectRef, GaRef = gaRef };
+            try
+            {
+                result.Dpt = FormatDpt(co.DatapointTypes?.Cast<object>().FirstOrDefault());
+                result.GaDpt = FormatDpt(ga.DatapointTypeObject);
+                result.DptWarning = DptMismatchWarning(result.Dpt, result.GaDpt);
+            }
+            catch { /* advisory only */ }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns a human-readable warning when a com-object DPT and a group-address DPT
+        /// have different MAIN numbers (e.g. 1.x switch vs 5.x percent), else null. An empty
+        /// DPT on either side yields no warning: a GA often has no DPT set, and some ETS
+        /// versions return an empty com-object DPT -- neither is a mismatch we can assert.
+        /// </summary>
+        private static string? DptMismatchWarning(string? coDpt, string? gaDpt)
+        {
+            if (string.IsNullOrEmpty(coDpt) || string.IsNullOrEmpty(gaDpt))
+                return null;
+            string MainOf(string s)
+            {
+                var i = s.IndexOf('.');
+                return i > 0 ? s.Substring(0, i) : s;
+            }
+            if (!string.Equals(MainOf(coDpt!), MainOf(gaDpt!), System.StringComparison.OrdinalIgnoreCase))
+                return $"DPT mismatch: com-object is {coDpt} but group address is {gaDpt}. " +
+                       "They will not exchange data correctly -- align the DPTs.";
+            return null;
+        }
+
+        /// <summary>Returns the device's application-program dynamic structure as XML
+        /// (ParameterBlock/Channel/ParameterRefRef tree). Authoritative source for
+        /// parameter -> UI-block/channel mapping. Read-only.</summary>
+        public string GetApplicationDynamic(string deviceRef)
+        {
+            var device = FindDevice(deviceRef);
+            var pir = device.ParameterInstanceRefs.Cast<ParameterInstanceRef>().FirstOrDefault();
+            var ap = pir?.ParameterRef?.Parent;
+            if (ap == null)
+                throw new KeyNotFoundException($"No application program found for device {deviceRef}.");
+            // NOTE: DynamicAsString returns the XmlDocument's type name ("System.Xml.XmlDocument"),
+            // not the XML -- a .NET gotcha (XmlDocument.ToString()). Use Dynamic (the XML node)
+            // and serialize its OuterXml.
+            object? dyn = ap.Dynamic;
+            if (dyn == null) return "";
+            if (dyn is System.Xml.XmlNode node) return node.OuterXml;
+            var outerXmlProp = dyn.GetType().GetProperty("OuterXml");
+            if (outerXmlProp != null)
+                return outerXmlProp.GetValue(dyn)?.ToString() ?? "";
+            return dyn.ToString() ?? "";
+        }
+
+        /// <summary>Read-only pre-check for a link (batch validate_only). Never mutates.</summary>
+        public List<string> ValidateLink(string comObjectRef, string gaRef)
+        {
+            var issues = new List<string>();
+            ComObjectInstanceRef? co = null;
+            try { (_, co) = FindComObject(comObjectRef); }
+            catch { issues.Add($"comObject {comObjectRef} not found"); }
+            if (co != null && !co.IsActive)
+                issues.Add($"comObject {comObjectRef} is inactive and cannot be linked");
+
+            GroupAddress? ga = null;
+            try { ga = FindGroupAddress(gaRef); }
+            catch { issues.Add($"groupAddress {gaRef} not found"); }
+
+            if (co != null && ga != null)
+            {
+                try
+                {
+                    var coDpt = FormatDpt(co.DatapointTypes?.Cast<object>().FirstOrDefault());
+                    var gaDpt = FormatDpt(ga.DatapointTypeObject);
+                    var w = DptMismatchWarning(coDpt, gaDpt);
+                    if (w != null) issues.Add(w);
+                }
+                catch { /* DPT advisory only */ }
+            }
+            return issues;
+        }
+
+        /// <summary>Read-only GA address-collision pre-check (batch validate_only).
+        /// Conservative: any parse/compare failure returns false (no false positives).</summary>
+        public bool GroupAddressAddressInUse(string address)
+        {
+            try
+            {
+                var raw = ParseGroupAddress(address, Project.GroupAddressStyle);
+                foreach (GroupAddress g in Inst.AllGroupAddresses)
+                {
+                    try { if (System.Convert.ToUInt32(g.Address) == raw) return true; }
+                    catch { /* skip this GA */ }
+                }
+            }
+            catch { /* cannot parse/compare -> do not assert a collision */ }
+            return false;
         }
 
         /// <summary>

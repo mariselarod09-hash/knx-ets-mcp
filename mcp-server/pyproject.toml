@@ -1,6 +1,6 @@
 [project]
 name = "knx-ets-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP server bridging LLM tool calls to the KNX ETS6 AddIn via IPC"
 requires-python = ">=3.11"
 dependencies = [

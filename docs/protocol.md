@@ -97,7 +97,15 @@ Read (no idempotencyKey required):
     `comment`: free-text comment field.
 - `ga.list` -> `[{ ref, address, name, description, comment, dpt }]`
   - `comment`: free-text comment field (description was already returned).
-- `comobjects.list` `{ deviceRef }` -> `[{ ref, number, name, description, functionText, text, dpt, flags, links:[gaRef] }]`
+- `comobjects.list` `{ deviceRef }` -> `[{ ref, number, name, description, functionText, text, dpt, flags, links:[gaRef], channel?, block? }]`
+  (`block` is the authoritative ETS group-object-tree path, e.g. "Operation / Display >
+  Push button functions > PB9/10: Push buttons 9/10", from walking `IGroupObjectTreeElement.
+  ParentTreeElement`; `channel` is the heuristic ChannelInstance label. Both omitted when
+  not applicable.)
+- `application.dynamic` `{ deviceRef }` -> `{ xml }` -- the application program's dynamic UI
+  tree (`ParameterBlock`/`Channel`/`ParameterRefRef`) as XML, from
+  `ApplicationProgram.DynamicAsString`. Authoritative source for mapping a parameter to its
+  UI block/channel (the SDK object model does not expose a parameter's block otherwise).
   - `description`: settable user label. `functionText`: settable functional label (e.g.
     "Raffstore links"). `text`: read-only display text from the app program (no setter).
 - `topology.list` -> `[{ areaRef, address, name, description, comment, lines: [{ lineRef, address, name, description, comment, segments: [{ segmentRef, name, description, comment }] }] }]`
@@ -117,7 +125,17 @@ Read (no idempotencyKey required):
 - `catalog.search_online` `{ query, manufacturerRef? }` -> `[{ unifiedCatalogItemRef, manufacturer, name, orderNumber, description }]`
   - Searches the **ETS online catalog** (`UnifiedManufacturers`, curated by KNX).
     Results are not yet locally usable -- fetch them first via `catalog.internalize`.
-- `params.list` `{ deviceRef }` -> `[{ parameterRef, name, value, isDefault, isActive }]`
+- `params.list` `{ deviceRef }` -> `[{ parameterRef, name, value, isDefault, isActive,
+  text?, unit?, access?, options?: [{ value, text }], min?, max?, block? }]`. The optional
+  fields carry product-data semantics (label, unit, access level, enum choices, numeric
+  range) and are omitted when the product leaves them unset. `block` is the parameter's UI
+  path from the application-program dynamic tree (e.g. "Operation / Display > Push button
+  functions > PB9/10: Push buttons 9/10"), parsed once per app program and cached; it is the
+  authoritative disambiguator for identically-named parameters -- select by `block` + `name`
+  + `isActive` (a unique triple) to target the correct instance. `isActive` is the
+  post-visibility result: `false` = deactivated by a controlling parameter (a set has no
+  effect); the raw condition is not exposed, so detect dependencies by setting a parameter
+  and re-reading.
   - Returns the `parameterRef` (and current/default value) for `param.set`.
 - `building.list` -> `[{ ref, name, description, comment, type, children:[...], devices:[deviceRef], functions:[{ ref, name, description, comment, groupAddresses:[gaRef] }] }]`
   - Recursive tree of the building structure. `type` is one of: Building,
@@ -158,7 +176,16 @@ Mutating (idempotencyKey required, run on ETS UI thread under UndoManager marker
   - Individual/physical address parsing (`device.setAddress`, `bus.ping`, etc.) tolerates
     commas and surrounding whitespace (e.g. `"1,1,5"` is accepted as `"1.1.5"`).
 - `device.addFromCatalog` `{ lineRef, catalogItemRef, address }` -> `{ ref, address }`
-- `link.create` `{ comObjectRef, gaRef }` -> `{ ok }`
+- `link.create` `{ comObjectRef, gaRef }` -> `{ comObjectRef, gaRef, dpt?, gaDpt?,
+  dptWarning? }`. The link always proceeds (ETS permits mismatched DPTs); `dptWarning` is a
+  soft advisory, present only when the com-object and group-address DPTs have different
+  main numbers. Filtering note: several MCP tools filter server-side to keep reads focused
+  (the underlying protocol methods still return the full list): `knx_list_parameters`
+  (`active_only` -- DEFAULTS TRUE, drops inactive; `name_contains`), `knx_list_comobjects`
+  (`name_contains`, matches text/functionText/channel), `knx_list_devices` (`name_contains`,
+  matches name/description/comment/product/orderNumber/address -- so a human label like
+  "Couch" in the description is findable), and `knx_list_group_addresses` (`name_contains`,
+  matches name/description/comment/address -- e.g. a label in the GA description).
   - Must check `IsActive` beforehand; inactive object -> `error.inactive_object`.
 - `link.delete` `{ comObjectRef, gaRef }` -> `{ ok }`
   - **Idempotent:** if the link does not (or no longer) exist, still returns
@@ -327,8 +354,13 @@ Project history (audit trail):
 marker, so parametrising and linking across many devices is one round-trip and one undo
 step instead of dozens. Requires `idempotencyKey` (the batch is one mutating operation).
 
-- `batch.apply` `{ operations: [ { method, params }, ... ], atomic? }` ->
+- `batch.apply` `{ operations: [ { method, params }, ... ], atomic?, validateOnly? }` ->
   `{ applied, atomic, rolledBack, total, ok, failed, skipped, results: [ { index, method, status, result?, error? } ] }`
+  - `validateOnly` (default `false`): read-only pre-flight. Nothing is mutated; returns
+    `{ validated: true, atomic, total, valid, invalid, results: [ { index, method, valid,
+    issues: [string] } ] }`. Checks: required params present; `link.create` -> com-object
+    exists + active, GA exists, DPT main-number match; `ga.create` -> address not already in
+    use. Best-effort/conservative (a check that cannot run yields no false positive).
   - `operations`: executed in order. Only fast, undo-reversible PROJECT mutations are
     allowed (allowlist: `ga.*`, `groupRange.*`, `device.*` create/label/address/unassign,
     `link.*`, `param.set`/`param.setDefault`, `area.*`, `line.*`, `comObject.*`,

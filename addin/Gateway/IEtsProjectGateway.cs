@@ -94,6 +94,26 @@ namespace Knx.EtsBridge.Addin
         public string? Text { get; set; }
         public string? Dpt { get; set; }
         public string Flags { get; set; } = "";
+        /// <summary>
+        /// The channel/function this ComObject belongs to (e.g. "Channel A - Blind"),
+        /// derived from the device's ChannelInstances. Lets the LLM group a flat ComObject
+        /// list by function. Omitted when the object is channel-independent or the channel
+        /// has no label.
+        /// </summary>
+        [Newtonsoft.Json.JsonProperty("channel",
+            DefaultValueHandling = Newtonsoft.Json.DefaultValueHandling.Ignore)]
+        public string? Channel { get; set; }
+        /// <summary>
+        /// The ETS group-object-tree path this ComObject sits under, e.g.
+        /// "Operation / Display > Push button functions > PB9/10: Push buttons 9/10".
+        /// Derived by walking IGroupObjectTreeElement.ParentTreeElement up to the root and
+        /// collecting Folder texts. This is the AUTHORITATIVE UI grouping (unlike the
+        /// heuristic `channel`); use it to reliably identify which function/block an object
+        /// belongs to. Omitted when the tree yields nothing.
+        /// </summary>
+        [Newtonsoft.Json.JsonProperty("block",
+            DefaultValueHandling = Newtonsoft.Json.DefaultValueHandling.Ignore)]
+        public string? Block { get; set; }
         public List<string> Links { get; set; } = new List<string>();
     }
 
@@ -144,13 +164,88 @@ namespace Knx.EtsBridge.Addin
         public string? Description { get; set; }
     }
 
+    /// <summary>One allowed choice of an enumerated parameter (value + human label).</summary>
+    internal sealed class ParameterOption
+    {
+        public string Value { get; set; } = "";
+        public string Text { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Result of a link.create. The link always proceeds (ETS allows mismatched DPTs);
+    /// dptWarning is a soft advisory when the ComObject's DPT does not match the group
+    /// address's DPT, so the LLM/user can catch a wrong wiring instead of it silently
+    /// carrying the wrong data type.
+    /// </summary>
+    internal sealed class LinkResult
+    {
+        public string ComObjectRef { get; set; } = "";
+        public string GaRef { get; set; } = "";
+        [Newtonsoft.Json.JsonProperty("dpt",
+            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string? Dpt { get; set; }
+        [Newtonsoft.Json.JsonProperty("gaDpt",
+            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string? GaDpt { get; set; }
+        [Newtonsoft.Json.JsonProperty("dptWarning",
+            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string? DptWarning { get; set; }
+    }
+
     internal sealed class ParameterInfo
     {
         public string ParameterRef { get; set; } = "";
         public string Name { get; set; } = "";
         public string Value { get; set; } = "";
         public bool IsDefault { get; set; }
+        /// <summary>
+        /// True when this parameter is active AFTER ETS' visibility calculation. A FALSE
+        /// value means the parameter is currently hidden/irrelevant because another
+        /// ("controlling") parameter has a value that deactivates it -- setting it has no
+        /// effect. To make it active, change the controlling parameter and re-read. The
+        /// SDK exposes the computed result, not the raw condition, so the reliable
+        /// workflow is: set a parameter -> re-read -> observe which parameters flipped
+        /// active/inactive.
+        /// </summary>
         public bool IsActive { get; set; }
+        /// <summary>Human label of the parameter (e.g. "Nachlaufzeit"). Omitted when empty.</summary>
+        [Newtonsoft.Json.JsonProperty("text",
+            DefaultValueHandling = Newtonsoft.Json.DefaultValueHandling.Ignore)]
+        public string? Text { get; set; }
+        /// <summary>
+        /// The parameter's UI block/channel path from the application-program dynamic tree,
+        /// e.g. "Operation / Display > Push button functions > PB9/10: Push buttons 9/10".
+        /// This is the AUTHORITATIVE disambiguator: the same parameter name (e.g. "Key label
+        /// for left push button") occurs many times across a device; the block path tells you
+        /// which UI node an instance belongs to, so you can target the correct one. Omitted
+        /// when the parameter is not placed in the dynamic tree.
+        /// </summary>
+        [Newtonsoft.Json.JsonProperty("block",
+            DefaultValueHandling = Newtonsoft.Json.DefaultValueHandling.Ignore)]
+        public string? Block { get; set; }
+        /// <summary>Unit/suffix shown after the value (e.g. "s", "min"). Omitted when empty.</summary>
+        [Newtonsoft.Json.JsonProperty("unit",
+            DefaultValueHandling = Newtonsoft.Json.DefaultValueHandling.Ignore)]
+        public string? Unit { get; set; }
+        /// <summary>Access level (e.g. None/Read/ReadWrite). Omitted when empty.</summary>
+        [Newtonsoft.Json.JsonProperty("access",
+            DefaultValueHandling = Newtonsoft.Json.DefaultValueHandling.Ignore)]
+        public string? Access { get; set; }
+        /// <summary>
+        /// The allowed choices for an enumerated parameter (value + label). Present only
+        /// for enum-typed parameters. Lets the LLM pick a valid value instead of guessing.
+        /// </summary>
+        [Newtonsoft.Json.JsonProperty("options",
+            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public List<ParameterOption>? Options { get; set; }
+        /// <summary>Minimum (inclusive) for a numeric parameter. Omitted when not numeric.</summary>
+        [Newtonsoft.Json.JsonProperty("min",
+            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string? Min { get; set; }
+        /// <summary>Maximum (inclusive) for a numeric parameter. Omitted when not numeric.</summary>
+        [Newtonsoft.Json.JsonProperty("max",
+            NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public string? Max { get; set; }
     }
 
     internal sealed class UnifiedCatalogItemInfo
@@ -506,8 +601,24 @@ namespace Knx.EtsBridge.Addin
         /// 2-level "main/sub", or raw integer). (#3)
         /// </summary>
         GroupAddressInfo CreateGroupAddress(string name, string address, uint? dptMain, uint? dptSub);
-        void CreateLink(string comObjectRef, string gaRef);
+        LinkResult CreateLink(string comObjectRef, string gaRef);
         void DeleteLink(string comObjectRef, string gaRef);
+
+        /// <summary>Read-only pre-check for a link (used by batch validate_only): returns a
+        /// list of human-readable issues (com-object missing/inactive, GA missing, DPT
+        /// mismatch); empty means the link would succeed. Never mutates.</summary>
+        List<string> ValidateLink(string comObjectRef, string gaRef);
+
+        /// <summary>Read-only: the device application program's dynamic UI structure
+        /// (ParameterBlock/Channel/ParameterRefRef tree) as XML. This is the authoritative
+        /// source for mapping a parameter to its UI block/channel, which the SDK object
+        /// model does not otherwise expose.</summary>
+        string GetApplicationDynamic(string deviceRef);
+
+        /// <summary>Read-only: true if a group address with this address already exists
+        /// (collision pre-check for batch validate_only). Conservative: returns false when
+        /// the address cannot be parsed/compared, to avoid false positives.</summary>
+        bool GroupAddressAddressInUse(string address);
         void SetParameter(string deviceRef, string parameterRef, string value);
 
         /// <summary>

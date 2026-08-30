@@ -50,6 +50,25 @@ _BATCHABLE_METHODS = frozenset({
     "projectHistory.add", "projectHistory.delete",
 })
 
+# Required params per batchable method (mirrors the C# BatchRequiredParams) for the
+# validate_only structural check.
+_BATCH_REQUIRED_PARAMS = {
+    "link.create": ("comObjectRef", "gaRef"),
+    "link.delete": ("comObjectRef", "gaRef"),
+    "ga.create": ("name", "address"),
+    "ga.delete": ("gaRef",),
+    "ga.rename": ("gaRef", "name"),
+    "ga.setDescription": ("gaRef",),
+    "ga.setDatapointType": ("gaRef",),
+    "param.set": ("deviceRef", "parameterRef", "value"),
+    "param.setDefault": ("deviceRef", "parameterRef"),
+    "comObject.setFlags": ("comObjectRef",),
+    "comObject.setDescription": ("comObjectRef",),
+    "comObject.setFunctionText": ("comObjectRef",),
+    "device.rename": ("deviceRef", "name"),
+    "device.setAddress": ("deviceRef", "address"),
+}
+
 # Mutable state attributes snapshotted for atomic batch rollback.
 _MOCK_STATE_ATTRS = (
     "_revision", "_revision_counter", "_project", "_devices", "_group_addresses",
@@ -69,6 +88,20 @@ _MOCK_MAX_NAME_LEN = 40
 
 def _make_ref(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _dpt_mismatch_warning(co_dpt: str | None, ga_dpt: str | None) -> str | None:
+    """Soft DPT-compatibility advisory (mirrors the C# gateway). Warns only when both
+    DPTs are set and their MAIN numbers differ (e.g. 1.x switch vs 5.x percent). An empty
+    DPT on either side yields no warning (a GA often has no DPT; some ETS versions return
+    an empty com-object DPT)."""
+    if not co_dpt or not ga_dpt:
+        return None
+    main = lambda s: s.split(".", 1)[0]  # noqa: E731
+    if main(co_dpt).lower() != main(ga_dpt).lower():
+        return (f"DPT mismatch: com-object is {co_dpt} but group address is {ga_dpt}. "
+                "They will not exchange data correctly -- align the DPTs.")
+    return None
 
 
 def _normalize_individual_address(raw: str) -> str:
@@ -338,6 +371,7 @@ class MockTransport(Transport):
             "todo.delete": self._handle_todo_delete,
             # Phase G: Channels/modules
             "device.channels": self._handle_device_channels,
+            "application.dynamic": self._handle_application_dynamic,
             # Phase G: Project history
             "projectHistory.list": self._handle_project_history_list,
             "projectHistory.add": self._handle_project_history_add,
@@ -539,6 +573,14 @@ class MockTransport(Transport):
             "value": "normal",
             "defaultValue": "normal",
             "isActive": True,
+            # Enumerated parameter: the LLM sees the allowed choices + labels.
+            "text": "Operating Mode",
+            "access": "ReadWrite",
+            "options": [
+                {"value": "normal", "text": "Normal"},
+                {"value": "night", "text": "Night"},
+                {"value": "comfort", "text": "Comfort"},
+            ],
         }
         param_1_2 = {
             "ref": "param-0003",
@@ -546,7 +588,15 @@ class MockTransport(Transport):
             "name": "Switch-on delay",
             "value": "0",
             "defaultValue": "0",
+            # Inactive: hidden until "Operating Mode" is changed -- demonstrates that a
+            # FALSE isActive means "controlled by another parameter", not "set me".
             "isActive": False,
+            "text": "Switch-on delay",
+            "unit": "s",
+            "access": "ReadWrite",
+            "min": "0",
+            "max": "255",
+            "block": "Operation / Display > Push button functions > PB9/10: Push buttons 9/10",
         }
         self._parameters[param_1_1["ref"]] = param_1_1
         self._parameters[param_1_2["ref"]] = param_1_2
@@ -563,6 +613,8 @@ class MockTransport(Transport):
             "text": "",
             "dpt": "5.001",
             "isActive": True,
+            "channel": "Channel A - Dimming",
+            "block": "Operation / Display > Dimming > Channel A",
             "flags": {"read": True, "write": True, "transmit": False, "update": False},
         }
         co_2_2 = {
@@ -575,6 +627,7 @@ class MockTransport(Transport):
             "text": "",
             "dpt": "5.001",
             "isActive": True,
+            "channel": "Channel B - Dimming",
             "flags": {"read": True, "write": True, "transmit": False, "update": False},
         }
         self._devices[dev2_ref] = {
@@ -601,7 +654,7 @@ class MockTransport(Transport):
         self._parameters[param_2_1["ref"]] = param_2_1
 
         # Group addresses (addresses as strings like "1/0/3")
-        ga1 = {"ref": "ga-0001", "address": "1/0/1", "name": "Light Living Room", "dpt": "1.001", "comment": "Ceiling light"}
+        ga1 = {"ref": "ga-0001", "address": "1/0/1", "name": "Light Living Room", "dpt": "1.001", "description": "Mittelgang", "comment": "Ceiling light"}
         ga2 = {"ref": "ga-0002", "address": "1/0/2", "name": "Dimmer Living Room", "dpt": "5.001", "comment": ""}
         self._group_addresses[ga1["ref"]] = ga1
         self._group_addresses[ga2["ref"]] = ga2
@@ -825,7 +878,7 @@ class MockTransport(Transport):
 
     def _handle_bridge_info(self, _params: dict) -> dict:
         return {
-            "addinVersion": "0.2.0",
+            "addinVersion": "0.3.0",
             "sdkVersion": "6.3.7959.0",       # runtime-loaded (host ETS) SDK
             "builtAgainstSdk": "6.4.8658.0",  # compile-time SDK (default build target)
             "projectName": self._project["name"],
@@ -869,6 +922,13 @@ class MockTransport(Transport):
                 "flags": copy.deepcopy(co["flags"]),
                 "links": links,
             }
+            # Channel/function grouping label, omitted when channel-independent (mirrors
+            # the gateway which omits an empty channel).
+            if co.get("channel"):
+                entry["channel"] = co["channel"]
+            # Authoritative ETS group-object-tree block path (mirrors gateway BuildBlockPath).
+            if co.get("block"):
+                entry["block"] = co["block"]
             result.append(entry)
         return result
 
@@ -985,13 +1045,19 @@ class MockTransport(Transport):
         for p in self._parameters.values():
             if p["deviceRef"] != device_ref:
                 continue
-            results.append({
+            entry = {
                 "parameterRef": p["ref"],
                 "name": p["name"],
                 "value": p["value"],
                 "isDefault": p["value"] == p["defaultValue"],
                 "isActive": p["isActive"],
-            })
+            }
+            # Optional product-data semantics -- emitted only when present, mirroring the
+            # C# gateway which omits empty/null enrichment fields from the JSON.
+            for key in ("text", "unit", "access", "options", "min", "max", "block"):
+                if p.get(key) not in (None, "", []):
+                    entry[key] = p[key]
+            results.append(entry)
         return results
 
     # -- Mutation handlers -----------------------------------------------------
@@ -1041,7 +1107,20 @@ class MockTransport(Transport):
 
         self._links.add((co_ref, ga_ref))
         self._bump_revision()
-        return {"ok": True}
+
+        # Mirror the gateway: return a LinkResult with a soft DPT-compatibility advisory.
+        ga = self._group_addresses.get(ga_ref, {})
+        co_dpt = co.get("dpt") or None
+        ga_dpt = ga.get("dpt") or None
+        result: dict = {"comObjectRef": co_ref, "gaRef": ga_ref}
+        if co_dpt:
+            result["dpt"] = co_dpt
+        if ga_dpt:
+            result["gaDpt"] = ga_dpt
+        warning = _dpt_mismatch_warning(co_dpt, ga_dpt)
+        if warning:
+            result["dptWarning"] = warning
+        return result
 
     def _handle_link_delete(self, params: dict) -> dict:
         co_ref = params.get("comObjectRef")
@@ -1114,6 +1193,22 @@ class MockTransport(Transport):
                                      f"batch.apply")
             parsed.append((sub_method, op.get("params", {}) or {}))
 
+        # validateOnly: read-only pre-flight -- report per-op issues without mutating.
+        if params.get("validateOnly") is True:
+            v_results = []
+            valid_count = invalid_count = 0
+            for i, (sub_method, sub_params) in enumerate(parsed):
+                issues = self._validate_batch_op(sub_method, sub_params)
+                ok = len(issues) == 0
+                v_results.append({"index": i, "method": sub_method,
+                                  "valid": ok, "issues": issues})
+                if ok:
+                    valid_count += 1
+                else:
+                    invalid_count += 1
+            return {"validated": True, "atomic": atomic, "total": len(parsed),
+                    "valid": valid_count, "invalid": invalid_count, "results": v_results}
+
         snapshot = self._snapshot_state() if atomic else None
         results: list[dict] = []
         ok_count = failed_count = skipped_count = 0
@@ -1148,6 +1243,36 @@ class MockTransport(Transport):
             "skipped": skipped_count,
             "results": results,
         }
+
+    def _validate_batch_op(self, method: str, p: dict) -> list[str]:
+        """Read-only pre-flight for one batch op (mirrors the C# ValidateOneOp)."""
+        issues: list[str] = []
+        for key in _BATCH_REQUIRED_PARAMS.get(method, ()):  # structural
+            v = p.get(key)
+            if v is None or v == "":
+                issues.append(f"missing required parameter '{key}'")
+
+        if method == "link.create":
+            co_ref, ga_ref = p.get("comObjectRef"), p.get("gaRef")
+            if co_ref and ga_ref:
+                co = self._com_objects.get(co_ref)
+                if co is None:
+                    issues.append(f"comObject {co_ref} not found")
+                elif not co.get("isActive", True):
+                    issues.append(f"comObject {co_ref} is inactive and cannot be linked")
+                ga = self._group_addresses.get(ga_ref)
+                if ga is None:
+                    issues.append(f"groupAddress {ga_ref} not found")
+                if co is not None and ga is not None:
+                    w = _dpt_mismatch_warning(co.get("dpt") or None, ga.get("dpt") or None)
+                    if w:
+                        issues.append(w)
+        elif method == "ga.create":
+            address = p.get("address")
+            if address and any(g.get("address") == address
+                               for g in self._group_addresses.values()):
+                issues.append(f"group address {address} already exists")
+        return issues
 
     def _apply_name_limit(self, name: str) -> tuple[str, bool]:
         """Simulate ETS truncating a too-long name; returns (stored, truncated)."""
@@ -2527,6 +2652,25 @@ class MockTransport(Transport):
         return {"ok": True}
 
     # -- Phase G: Channel / module handler -------------------------------------
+
+    def _handle_application_dynamic(self, params: dict) -> dict:
+        """application.dynamic -> {xml}: the app-program dynamic UI tree."""
+        device_ref = params.get("deviceRef")
+        if not device_ref:
+            raise _ProtocolError("invalid_params", "deviceRef is required")
+        if device_ref not in self._devices:
+            raise _ProtocolError("not_found", f"Device {device_ref} not found")
+        # A small representative dynamic tree (real devices return a large XML string).
+        xml = (
+            '<Dynamic>'
+            '<ChannelIndependentBlock/>'
+            '<Channel Name="CH-A" Text="Channel A - Dimming">'
+            '<ParameterBlock Name="PB-A" Text="Dimming">'
+            '<ParameterRefRef RefId="param-0002"/>'
+            '</ParameterBlock></Channel>'
+            '</Dynamic>'
+        )
+        return {"xml": xml}
 
     def _handle_device_channels(self, params: dict) -> dict:
         """device.channels -- mirrors C# DeviceChannelsResult / ChannelInstanceInfo."""

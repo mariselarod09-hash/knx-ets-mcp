@@ -60,6 +60,18 @@ foreach ($v in $versions) {
         New-Item -ItemType Directory -Force -Path $target | Out-Null
         Copy-Item -Path (Join-Path $appDir.FullName '*') -Destination $target -Recurse -Force
 
+        # Install the ETS directory signature NEXT TO the app folder (in AddIns\), not
+        # inside it: ETS only treats the folder as signed when <AppId>.signature sits
+        # beside it. It lives in the payload's ets<n>\ folder, next to <AppId>\.
+        $sigSrc = Join-Path $appDir.Parent.FullName ("$appId.signature")
+        $sigDest = Join-Path (Split-Path $target -Parent) "$appId.signature"
+        if (Test-Path $sigSrc) {
+            Copy-Item -Path $sigSrc -Destination $sigDest -Force
+            Write-Host "Installed signature: $sigDest" -ForegroundColor Green
+        } else {
+            Write-Host "No .signature in payload - AddIn will load UNSIGNED." -ForegroundColor DarkYellow
+        }
+
         # Clear the AddIns cache so ETS re-reads the manifest on next start.
         $cache = Join-Path $env:LOCALAPPDATA ("Knx\" + $v.Name + "\AddInsCache")
         if (Test-Path $cache) { Remove-Item -Path $cache -Recurse -Force -ErrorAction SilentlyContinue }

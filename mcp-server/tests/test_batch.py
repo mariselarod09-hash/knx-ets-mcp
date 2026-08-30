@@ -142,3 +142,39 @@ async def test_batch_via_mcp_tool_rollback(client: Client) -> None:
     assert data["applied"] is False and data["rolledBack"] is True
     assert data["results"][0]["status"] == "ok"
     assert data["results"][1]["status"] == "error"
+
+
+# -- validate_only: read-only pre-flight ---------------------------------------
+
+async def test_batch_validate_only_all_valid(bridge_client: KnxBridgeClient) -> None:
+    before = await _ga_count(bridge_client)
+    res = await bridge_client.batch_apply([
+        {"method": "ga.create", "params": {"name": "Pre A", "address": "7/0/9"}},
+        {"method": "link.create", "params": {"comObjectRef": "co-0002", "gaRef": "ga-0001"}},
+    ], validate_only=True)
+    assert res["validated"] is True
+    assert res["total"] == 2 and res["valid"] == 2 and res["invalid"] == 0
+    assert all(r["valid"] and r["issues"] == [] for r in res["results"])
+    # Nothing was mutated.
+    assert await _ga_count(bridge_client) == before
+
+
+async def test_batch_validate_only_reports_issues(bridge_client: KnxBridgeClient) -> None:
+    before = await _ga_count(bridge_client)
+    res = await bridge_client.batch_apply([
+        {"method": "link.create", "params": {"comObjectRef": "co-9999", "gaRef": "ga-0001"}},
+        {"method": "link.create", "params": {"comObjectRef": "co-0003", "gaRef": "ga-0001"}},
+        {"method": "ga.create", "params": {"name": "Dup", "address": "1/0/1"}},
+        {"method": "link.create", "params": {"comObjectRef": "co-0004", "gaRef": "ga-0001"}},
+        {"method": "ga.create", "params": {"name": "NoAddr"}},
+    ], validate_only=True)
+    assert res["validated"] is True
+    assert res["total"] == 5 and res["valid"] == 0 and res["invalid"] == 5
+    r = res["results"]
+    assert "not found" in " ".join(r[0]["issues"]).lower()          # co-9999 missing
+    assert "inactive" in " ".join(r[1]["issues"]).lower()           # co-0003 inactive
+    assert "already exists" in " ".join(r[2]["issues"]).lower()     # 1/0/1 collision
+    assert "mismatch" in " ".join(r[3]["issues"]).lower()           # 5.001 vs 1.001
+    assert "missing required parameter" in " ".join(r[4]["issues"]).lower()  # no address
+    # Read-only: no GA created despite the ga.create ops.
+    assert await _ga_count(bridge_client) == before

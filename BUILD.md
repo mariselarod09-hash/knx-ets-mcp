@@ -92,7 +92,9 @@ per ETS version, each with its own separately-built DLL and version-matching man
 ```
 install.bat / install.ps1 / uninstall.bat
 ets6/<AppId>/  Knx.EtsBridge.Addin.dll (6.4 build) + AddInManifest.xml + deps
+ets6/<AppId>.signature            (ETS directory signature, beside the folder)
 ets5/<AppId>/  Knx.EtsBridge.Addin.dll (5.7 build) + AddInManifest.xml + deps
+ets5/<AppId>.signature            (ETS directory signature, beside the folder)
 ```
 
 `install.ps1` holds the real logic (kept readable so a user can inspect it): it detects
@@ -120,11 +122,41 @@ plus the matching manifest (`addin/AddInManifest.xml` for ETS6,
 `addin/AddInManifest.ets5.xml` renamed to `AddInManifest.xml` for ETS5) and `icon.png`.
 Guard the result: `find <pkg> -iname 'Knx.Ets.*.dll'` must be empty.
 
+### Sign the payload folders
+
+Sign each `<AppId>` folder (writes `<AppId>.signature` next to it):
+
+```bash
+python3 -m venv .sign/venv && .sign/venv/bin/pip install pyuca
+export ETS_CONVERTER_KEY="$(cat /path/to/converter-key.xml)"   # <RSAKeyValue> XML
+.sign/venv/bin/python .sign/sign.py <pkg>/ets6/M0FFF-A0001
+.sign/venv/bin/python .sign/sign.py <pkg>/ets5/M0FFF-A0001
+.sign/venv/bin/python .sign/sign.py <pkg>/ets6/M0FFF-A0001 --check   # verify
+```
+
+`ETS_CONVERTER_KEY` is the ETS "converter" RSA key (a fixed 1024-bit key embedded in
+ETS — tamper detection, not secrecy). In the release pipeline it is the
+`ETS_CONVERTER_KEY` GitHub Actions secret; locally you can obtain it the same way you
+obtained it for the repo secret. The signer needs `pyuca` (a pure-Python UCA
+collation, used to reproduce .NET's `StringComparer.InvariantCulture` ordering) and the
+full `<RSAKeyValue>` (with `D`) to sign.
+
 ## Notes
 
-- **Signature:** sideloaded (file-copied) AddIns have no `.signature`; ETS runs unsigned
-  local AddIns, but for real distribution use a signed `.etsapp` with a KNX
-  Association-registered manufacturer ID (the `M0FFF-A0001` AppId here is a placeholder).
+- **Signature:** each AddIn payload folder is signed with ETS's own *directory
+  signature* so ETS treats the sideloaded folder as signed (the file-copied variant,
+  as opposed to a signed `.etsapp`). `tools/sign_addin.py` reproduces the algorithm
+  from `Knx.Ets.XmlSigning` (`DirectorySigner` + `AddInSigning`): SHA-1 per file,
+  `relpath:base64(sha1)` entries sorted with .NET `StringComparer.InvariantCulture`
+  (via `pyuca`), SHA-1 over the comma-joined string, RSA-PKCS#1 v1.5 (SHA-1) with the
+  fixed ETS "converter" key, written to `<AppId>.signature` **next to** the folder.
+  The release pipeline signs the payload in the `release` job (before zipping); the key
+  is the `ETS_CONVERTER_KEY` repo secret (the `<RSAKeyValue>` XML). Without that secret
+  the payload is built **unsigned** (ETS still runs it, but flags the folder as not
+  signed). `install.ps1` copies the `.signature` into `...\AddIns\` beside the app
+  folder; `uninstall.bat` removes it. For a *registered* distribution you would instead
+  use a signed `.etsapp` with a KNX Association-registered manufacturer ID (the
+  `M0FFF-A0001` AppId here is a placeholder).
 - **Single self-contained DLL:** Newtonsoft.Json is embedded as a manifest resource and
   resolved from an `AppDomain.AssemblyResolve` handler, so the AddIn ships as one DLL with
   no loose dependencies. (System.Text.Json was removed because its dependency chain could

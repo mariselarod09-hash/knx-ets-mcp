@@ -82,7 +82,7 @@ async def test_link_unlink_link_executes_both_links(client: Client) -> None:
     # 1. Link
     r1 = await client.call_tool("knx_link", args_link, raise_on_error=False)
     assert not r1.is_error
-    assert tool_data(r1)["ok"] is True
+    assert tool_data(r1)["comObjectRef"] == "co-0002"
 
     # Verify link exists
     cos = tool_data(await client.call_tool("knx_list_comobjects", {"device_ref": "dev-0001"}, raise_on_error=False))
@@ -102,7 +102,7 @@ async def test_link_unlink_link_executes_both_links(client: Client) -> None:
     # 3. Re-link (must succeed, not be deduplicated)
     r3 = await client.call_tool("knx_link", args_link, raise_on_error=False)
     assert not r3.is_error
-    assert tool_data(r3)["ok"] is True
+    assert tool_data(r3)["comObjectRef"] == "co-0002"
 
     # Verify link is back
     cos = tool_data(await client.call_tool("knx_list_comobjects", {"device_ref": "dev-0001"}, raise_on_error=False))

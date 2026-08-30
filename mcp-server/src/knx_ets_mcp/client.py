@@ -216,7 +216,9 @@ class KnxBridgeClient:
         return await self._request("ga.list")
 
     async def list_comobjects(self, device_ref: str) -> list[dict[str, Any]]:
-        """comobjects.list -> [{ref, number, name, dpt, flags, links}]"""
+        """comobjects.list -> [{ref, number, name, description, functionText, text, dpt,
+        flags, links, channel?}]. channel is the function-grouping label when the object
+        belongs to a device channel."""
         return await self._request("comobjects.list", {"deviceRef": device_ref})
 
     async def list_topology(self) -> list[dict[str, Any]]:
@@ -250,7 +252,11 @@ class KnxBridgeClient:
         return await self._request("catalog.search_online", params)
 
     async def list_parameters(self, device_ref: str) -> list[dict[str, Any]]:
-        """params.list -> [{parameterRef, name, value, isDefault, isActive}]"""
+        """params.list -> [{parameterRef, name, value, isDefault, isActive,
+        text?, unit?, access?, options?[{value,text}], min?, max?}].
+
+        isActive is post-visibility: false = deactivated by a controlling parameter
+        (set has no effect). options/min/max give the valid value range."""
         return await self._request("params.list", {"deviceRef": device_ref})
 
     # -- Mutation methods ------------------------------------------------------
@@ -291,7 +297,10 @@ class KnxBridgeClient:
         ga_ref: str,
         expected_revision: str | None = None,
     ) -> dict[str, Any]:
-        """link.create -> {ok}"""
+        """link.create -> {comObjectRef, gaRef, dpt?, gaDpt?, dptWarning?}.
+
+        dptWarning is a soft advisory when the com-object and group-address DPTs have
+        different main numbers (the link still proceeds)."""
         return await self._request("link.create", {
             "comObjectRef": com_object_ref,
             "gaRef": ga_ref,
@@ -1254,6 +1263,14 @@ class KnxBridgeClient:
             "deviceRef": device_ref,
         })
 
+    async def application_dynamic(self, device_ref: str) -> dict[str, Any]:
+        """application.dynamic -> {xml}. The app-program dynamic UI tree
+        (ParameterBlock/Channel/ParameterRefRef), authoritative source for mapping a
+        parameter to its UI block/channel."""
+        return await self._request("application.dynamic", {
+            "deviceRef": device_ref,
+        })
+
     # -- Phase G: Project history ----------------------------------------------
 
     async def list_project_history(self) -> list[dict[str, Any]]:
@@ -1286,10 +1303,15 @@ class KnxBridgeClient:
         self,
         operations: list[dict[str, Any]],
         atomic: bool = True,
+        validate_only: bool = False,
         expected_revision: str | None = None,
     ) -> dict[str, Any]:
-        """batch.apply -> {applied, atomic, rolledBack, total, ok, failed, skipped, results[]}"""
+        """batch.apply -> {applied, atomic, rolledBack, total, ok, failed, skipped, results[]}.
+
+        validate_only=True -> read-only pre-flight: {validated, atomic, total, valid,
+        invalid, results:[{index, method, valid, issues[]}]}, nothing mutated."""
         return await self._request("batch.apply", {
             "operations": operations,
             "atomic": atomic,
+            "validateOnly": validate_only,
         }, expected_revision)

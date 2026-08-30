@@ -27,3 +27,7 @@ release/
 
 # Local scratch notes (may contain secrets)
 git.txt
+.playwright-mcp/
+
+# local signing venv
+.sign/venv/

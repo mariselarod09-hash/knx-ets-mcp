@@ -30,7 +30,7 @@ namespace Knx.EtsBridge.Addin
     /// (per ETS AddIn contract); they are no-ops here because the long-lived instance
     /// manages the IPC server lifecycle through Initialize/Dispose.
     /// </summary>
-    [AddIn("KNX-ETS MCP Bridge", Version = "0.2.0", Publisher = "knx-ets-bridge")]
+    [AddIn("KNX-ETS MCP Bridge", Version = "0.3.0", Publisher = "knx-ets-bridge")]
 #if ETS5
     // ETS5 SDK 5.7 has no IEditAddInConfiguration; config dialog is the 2-arg
     // ShowConfigurationDialog on IEts4AddIn instead.

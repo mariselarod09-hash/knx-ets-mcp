@@ -3,7 +3,7 @@
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>Knx.EtsBridge.Addin</AssemblyName>
     <RootNamespace>Knx.EtsBridge.Addin</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <NoWarn>$(NoWarn);CS0618;NU1701;NU1702</NoWarn>

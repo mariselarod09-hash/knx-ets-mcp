@@ -20,7 +20,7 @@ from knx_ets_mcp.transport.base import Transport
 # Limits
 _CONNECT_TIMEOUT = 10.0  # seconds
 _READ_TIMEOUT = 30.0  # seconds
-_MAX_FRAME = 4 * 1024 * 1024  # 4 MB max response frame
+_MAX_FRAME = 16 * 1024 * 1024  # 16 MB max response frame
 
 
 class NamedPipeTransport(Transport):

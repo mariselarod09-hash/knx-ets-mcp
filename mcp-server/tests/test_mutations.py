@@ -102,13 +102,33 @@ async def test_link_active_object(client: Client) -> None:
         "ga_ref": "ga-0001",
     }, raise_on_error=False)
     data = tool_data(result)
-    assert data["ok"] is True
+    assert data["comObjectRef"] == "co-0002"
+    assert data["gaRef"] == "ga-0001"
+    # co-0002 (1.001) and ga-0001 (1.001) match -> no DPT warning.
+    assert "dptWarning" not in data
 
     # Verify the link appears
     cos_result = await client.call_tool("knx_list_comobjects", {"device_ref": "dev-0001"}, raise_on_error=False)
     cos = tool_data(cos_result)
     co2 = next(co for co in cos if co["ref"] == "co-0002")
     assert "ga-0001" in co2["links"]
+
+
+async def test_link_dpt_mismatch_warns(client: Client) -> None:
+    """Linking DPTs with different main numbers still succeeds but returns dptWarning."""
+    result = await client.call_tool("knx_link", {
+        "com_object_ref": "co-0004",  # dpt 5.001 (%)
+        "ga_ref": "ga-0001",          # dpt 1.001 (switch)
+    }, raise_on_error=False)
+    assert not result.is_error
+    data = tool_data(result)
+    assert data["dpt"] == "5.001"
+    assert data["gaDpt"] == "1.001"
+    assert "dptWarning" in data and "mismatch" in data["dptWarning"].lower()
+    # The link still happened despite the warning.
+    cos = tool_data(await client.call_tool("knx_list_comobjects", {"device_ref": "dev-0002"}, raise_on_error=False))
+    co4 = next(co for co in cos if co["ref"] == "co-0004")
+    assert "ga-0001" in co4["links"]
 
 
 async def test_link_inactive_object(client: Client) -> None:

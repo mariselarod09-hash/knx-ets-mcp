@@ -1116,8 +1116,7 @@ namespace Knx.EtsBridge.Addin
                     return _dispatcher.RunOnUiThread(() =>
                     {
                         GuardMutation(expectedRevision);
-                        _gateway.CreateLink(coRef, gaRef);
-                        return (object)new OkResult();
+                        return (object)_gateway.CreateLink(coRef, gaRef);
                     });
                 }
 
@@ -2137,6 +2136,13 @@ namespace Knx.EtsBridge.Addin
                         () => _gateway.ListDeviceChannels(deviceRef));
                 }
 
+                case "application.dynamic":
+                {
+                    var deviceRef = GetRequiredString(parms, "deviceRef");
+                    return _dispatcher.RunOnUiThread(
+                        () => (object)new { xml = _gateway.GetApplicationDynamic(deviceRef) });
+                }
+
                 // ===============================================================
                 // Group 6: Project History
                 // ===============================================================
@@ -2253,6 +2259,21 @@ namespace Knx.EtsBridge.Addin
                 ops.Add((subMethod, subParams));
             }
 
+            // validateOnly: read-only pre-flight. Report per-op issues without opening a
+            // marker or mutating anything. Lets the caller catch bad refs / inactive
+            // com-objects / DPT mismatches / GA collisions BEFORE applying the batch.
+            bool validateOnly = false;
+            {
+                JToken? vTok;
+                if (parmsObj.TryGetValue("validateOnly", out vTok)
+                    && vTok.Type == JTokenType.Boolean)
+                {
+                    validateOnly = (bool)vTok;
+                }
+            }
+            if (validateOnly)
+                return _dispatcher.RunOnUiThread(() => ValidateBatchOps(ops, atomic));
+
             // -- Execute inside a single UI-thread round so the outer marker spans all
             //    sub-operations (their child markers nest under it). --
             return _dispatcher.RunOnUiThread(() =>
@@ -2336,6 +2357,91 @@ namespace Knx.EtsBridge.Addin
                     results
                 };
             });
+        }
+
+        // Required params per batchable method, used by validateOnly's structural check.
+        // Methods not listed have no required-param check (still allowlisted structurally).
+        private static readonly Dictionary<string, string[]> BatchRequiredParams =
+            new Dictionary<string, string[]>
+            {
+                ["link.create"] = new[] { "comObjectRef", "gaRef" },
+                ["link.delete"] = new[] { "comObjectRef", "gaRef" },
+                ["ga.create"] = new[] { "name", "address" },
+                ["ga.delete"] = new[] { "gaRef" },
+                ["ga.rename"] = new[] { "gaRef", "name" },
+                ["ga.setDescription"] = new[] { "gaRef" },
+                ["ga.setDatapointType"] = new[] { "gaRef" },
+                ["param.set"] = new[] { "deviceRef", "parameterRef", "value" },
+                ["param.setDefault"] = new[] { "deviceRef", "parameterRef" },
+                ["comObject.setFlags"] = new[] { "comObjectRef" },
+                ["comObject.setDescription"] = new[] { "comObjectRef" },
+                ["comObject.setFunctionText"] = new[] { "comObjectRef" },
+                ["device.rename"] = new[] { "deviceRef", "name" },
+                ["device.setAddress"] = new[] { "deviceRef", "address" },
+            };
+
+        // Read-only pre-flight for batch.apply?validateOnly=true. Runs on the UI thread so
+        // the gateway reads (ref resolution, DPT compare, GA collision) are safe.
+        private object ValidateBatchOps(List<(string Method, JToken? Params)> ops, bool atomic)
+        {
+            var results = new List<object>(ops.Count);
+            int validCount = 0, invalidCount = 0;
+            for (int i = 0; i < ops.Count; i++)
+            {
+                var issues = ValidateOneOp(ops[i].Method, ops[i].Params as JObject);
+                bool ok = issues.Count == 0;
+                results.Add(new { index = i, method = ops[i].Method, valid = ok, issues });
+                if (ok) validCount++; else invalidCount++;
+            }
+            return new
+            {
+                validated = true,
+                atomic,
+                total = ops.Count,
+                valid = validCount,
+                invalid = invalidCount,
+                results
+            };
+        }
+
+        private List<string> ValidateOneOp(string method, JObject? p)
+        {
+            var issues = new List<string>();
+
+            // Structural: required params present and non-empty.
+            if (BatchRequiredParams.TryGetValue(method, out var required))
+            {
+                foreach (var key in required)
+                {
+                    var tok = p?[key];
+                    if (tok == null || tok.Type == JTokenType.Null
+                        || (tok.Type == JTokenType.String && string.IsNullOrEmpty((string?)tok)))
+                    {
+                        issues.Add($"missing required parameter '{key}'");
+                    }
+                }
+            }
+
+            // Semantic (read-only) checks for the highest-value methods.
+            try
+            {
+                if (method == "link.create")
+                {
+                    var coRef = (string?)p?["comObjectRef"];
+                    var gaRef = (string?)p?["gaRef"];
+                    if (!string.IsNullOrEmpty(coRef) && !string.IsNullOrEmpty(gaRef))
+                        issues.AddRange(_gateway.ValidateLink(coRef!, gaRef!));
+                }
+                else if (method == "ga.create")
+                {
+                    var address = (string?)p?["address"];
+                    if (!string.IsNullOrEmpty(address) && _gateway.GroupAddressAddressInUse(address!))
+                        issues.Add($"group address {address} already exists");
+                }
+            }
+            catch { /* validation is best-effort; a check failure must not crash validate */ }
+
+            return issues;
         }
 
         // Map an exception thrown by a sub-operation to the same (code, message) pairs the

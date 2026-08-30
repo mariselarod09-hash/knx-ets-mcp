@@ -13,7 +13,7 @@ async def test_bridge_info(client: Client) -> None:
     """bridge.info returns AddIn/SDK version, project metadata, and knxIpOnly."""
     result = await client.call_tool("knx_bridge_info", {}, raise_on_error=False)
     data = tool_data(result)
-    assert data["addinVersion"] == "0.2.0"
+    assert data["addinVersion"] == "0.3.0"
     assert data["sdkVersion"] == "6.3.7959.0"
     assert data["builtAgainstSdk"] == "6.4.8658.0"
     assert isinstance(data["projectName"], str)

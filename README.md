@@ -22,9 +22,11 @@ It has two parts that work together:
 
 Your assistant then has tools to:
 
-- **Inspect** — devices (with order numbers), group addresses, communication objects,
-  channels/modules, topology, building view, catalog, parameters, trades, tags, to-dos,
-  project history, and KNX Secure certificates.
+- **Inspect** — devices (with order numbers), group addresses, communication objects
+  (with their function/channel block), topology, building view, catalog, parameters
+  (with labels, units, allowed options, value ranges, and their UI block so the right
+  parameter can be targeted reliably on complex devices), channels/modules, trades, tags,
+  to-dos, project history, and KNX Secure certificates.
 - **Build** — create group addresses, add devices from the catalog, link communication
   objects to group addresses, set parameters (and reset to defaults).
 - **Edit** — delete/rename group addresses, set descriptions and datapoint types, create
@@ -64,7 +66,10 @@ firmware.
 
 - **ETS 5 or ETS 6** (edition **Lite or higher** -- the free Demo cannot load AddIns).
   The release ships builds for both **ETS 6** and **ETS 5**; `install.bat` picks the right
-  one per installed ETS version.
+  one per installed ETS version. Because this is a sideloaded (non-validated) AddIn, ETS
+  runs it only with a (free) **ETS App developer/test license** (bound to a KNX organization
+  account) or with the ETS license check disabled; ETS itself must be licensed (Lite or
+  higher).
 - **Windows** to run ETS: normal **x64 Windows**, or **Windows 11 ARM** in a VM on an
   Apple Silicon Mac (**Parallels Desktop**, or the free **UTM**).
 - A **bus interface** configured in ETS for bus operations (KNXnet/IP or USB).
@@ -106,10 +111,12 @@ separately, for those who prefer to run the server with their own Python — e.g
 1. Close ETS.
 2. Right-click `knx-ets-mcp-<version>.zip` → **Extract All** (do not run from inside the zip).
 3. Double-click **`install.bat`** inside the extracted folder. It copies the
-   AddIn into the correct (hidden) location for each installed ETS version
-   (`C:\ProgramData\KNX\ETS<n>\Apps\AddIns\<AppId>\`) and clears the AddIn cache, then
-   prints how to start the MCP server (next step). If Windows reports an access error,
-   right-click it and choose *Run as administrator*.
+   AddIn — including its ETS directory signature (`<AppId>.signature`, so ETS
+   treats the folder as signed) — into the correct (hidden) location for each
+   installed ETS version (`C:\ProgramData\KNX\ETS<n>\Apps\AddIns\<AppId>\`) and
+   clears the AddIn cache, then prints how to start the MCP server (next step).
+   If Windows reports an access error, right-click it and choose *Run as
+   administrator*.
 4. Start ETS.
 
 To remove it later, run `uninstall.bat` from the same folder.
@@ -261,7 +268,7 @@ ETS apply to **IoT devices only**. They are gated by a preference:
 
 ## Status
 
-Early / experimental. Essentially the full practical ETS6 SDK surface is exposed --
+Early / experimental. Essentially the full practical ETS 5/6 SDK surface is exposed --
 inspect, build, edit (delete/rename/topology/flags/moves), building view, trades, tags,
 to-dos, project history, certificates, bus interface, segments, additional addresses,
 catalog, project (export/undo-redo/navigate), programming, firmware, and bus operations
